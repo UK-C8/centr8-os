@@ -6,6 +6,7 @@ import { SprintStatusBadge, sprintStatusColor } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CardButton } from "@/components/ui/Card";
 import { SprintBoard } from "@/components/SprintBoard";
+import { CapacityPanel } from "@/components/CapacityPanel";
 import { TaskDetailModal } from "@/components/TaskDetailModal";
 import type { Task } from "@/components/TaskCard";
 
@@ -90,6 +91,7 @@ export default function SprintsPage() {
           </div>
           <SprintStatusBadge status={openSprint.status} />
         </div>
+        {selectedOrgId && <CapacityPanel sprintId={openSprint.id} orgId={selectedOrgId} />}
         <SprintBoard tasks={sprintTasks} canEdit={canEdit} onTaskClick={setOpenTaskId} onStatusChange={handleStatusChange} />
 
         {openTaskId && (

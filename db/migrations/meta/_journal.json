@@ -113,6 +113,27 @@
       "when": 1784665273064,
       "tag": "0015_force_rls_agent_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784670958416,
+      "tag": "0016_jazzy_aaron_stack",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784670970586,
+      "tag": "0017_force_rls_capacity_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784670989670,
+      "tag": "0018_seed_budgeting_permissions",
+      "breakpoints": true
     }
   ]
 }

@@ -36,7 +36,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         .where(eq(projects.id, id));
       if (!existing) return undefined;
 
-      await requirePermission(db, userId, existing.orgId, "project", "update");
+      const editingBudget = body.budget_allocated !== undefined || body.budget_spent !== undefined;
+      const editingProjectFields =
+        body.name !== undefined ||
+        body.status !== undefined ||
+        body.portfolio_id !== undefined ||
+        body.start_date !== undefined ||
+        body.end_date !== undefined;
+
+      // Separate gate from "project:update" (Prompt 3.2) — budget fields
+      // live on the same row, but an org could grant one without the
+      // other (e.g. a future finance-only custom role), so each only
+      // checks the permission it actually needs.
+      if (editingProjectFields) {
+        await requirePermission(db, userId, existing.orgId, "project", "update");
+      }
+      if (editingBudget) {
+        await requirePermission(db, userId, existing.orgId, "budget", "update");
+      }
 
       const [updated] = await db
         .update(projects)
@@ -46,6 +63,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           portfolioId: body.portfolio_id === undefined ? undefined : body.portfolio_id,
           startDate: body.start_date === undefined ? undefined : body.start_date,
           endDate: body.end_date === undefined ? undefined : body.end_date,
+          budgetAllocated: body.budget_allocated === undefined ? undefined : body.budget_allocated,
+          budgetSpent: body.budget_spent === undefined ? undefined : body.budget_spent,
         })
         .where(eq(projects.id, id))
         .returning();

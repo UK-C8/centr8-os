@@ -3,6 +3,7 @@
 import { useEffect, useState, use } from "react";
 import { useOrg } from "@/lib/context/OrgContext";
 import {
+  Badge,
   ProjectStatusBadge,
   SprintStatusBadge,
   TaskStatusBadge,
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardButton } from "@/components/ui/Card";
 import { Input, Select, Field } from "@/components/ui/Input";
 import { SprintBoard } from "@/components/SprintBoard";
+import { CapacityPanel } from "@/components/CapacityPanel";
 import { TaskDetailModal } from "@/components/TaskDetailModal";
 import type { Task } from "@/components/TaskCard";
 import { PROJECT_STATUSES, TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES } from "@/lib/constants";
@@ -24,6 +26,8 @@ type Project = {
   status: string;
   startDate: string | null;
   endDate: string | null;
+  budgetAllocated: number | null;
+  budgetSpent: number | null;
 };
 type Milestone = { id: string; name: string; dueDate: string | null };
 type Sprint = { id: string; name: string; status: string; startDate: string | null; endDate: string | null };
@@ -111,7 +115,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         ))}
       </div>
 
-      {tab === "Overview" && <OverviewTab projectId={id} milestones={milestones} onMilestoneAdded={loadAll} />}
+      {tab === "Overview" && <OverviewTab projectId={id} project={project} milestones={milestones} onMilestoneAdded={loadAll} />}
       {tab === "Sprints" && (
         <SprintsTab sprints={sprints} tasks={tasks} canEdit={canEditTasks} onTaskClick={setOpenTaskId} onStatusChange={handleStatusChange} />
       )}
@@ -136,10 +140,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
 function OverviewTab({
   projectId,
+  project,
   milestones,
   onMilestoneAdded,
 }: {
   projectId: string;
+  project: Project;
   milestones: Milestone[];
   onMilestoneAdded: () => void;
 }) {
@@ -165,7 +171,10 @@ function OverviewTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {(project.budgetAllocated != null || project.budgetSpent != null) && <BudgetSummary project={project} />}
+
+      <div className="space-y-4">
       <h2 className="text-h3 font-semibold text-neutral-800">Milestones</h2>
       {milestones.length === 0 ? (
         <p className="text-body text-neutral-600">No milestones yet.</p>
@@ -191,7 +200,40 @@ function OverviewTab({
           </Button>
         </form>
       )}
+      </div>
     </div>
+  );
+}
+
+function BudgetSummary({ project }: { project: Project }) {
+  const allocated = project.budgetAllocated ?? 0;
+  const spent = project.budgetSpent ?? 0;
+  const overBudget = project.budgetAllocated != null && spent > allocated;
+  const pctUsed = allocated > 0 ? Math.min(100, Math.round((spent / allocated) * 100)) : 0;
+
+  return (
+    <Card padding="sm" className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-h3 font-semibold text-neutral-800">Budget</h2>
+        {overBudget && <Badge color="danger">Over budget</Badge>}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-body">
+        <span className="text-neutral-600">
+          Allocated: <span className="font-medium text-neutral-950">{project.budgetAllocated != null ? `$${allocated.toLocaleString()}` : "Not set"}</span>
+        </span>
+        <span className="text-neutral-600">
+          Spent: <span className="font-medium text-neutral-950">{project.budgetSpent != null ? `$${spent.toLocaleString()}` : "Not set"}</span>
+        </span>
+      </div>
+      {project.budgetAllocated != null && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+          <div
+            className={`h-full rounded-full ${overBudget ? "bg-danger-600" : "bg-primary-600"}`}
+            style={{ width: `${pctUsed}%` }}
+          />
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -208,6 +250,7 @@ function SprintsTab({
   onTaskClick: (taskId: string) => void;
   onStatusChange: (taskId: string, status: string) => void;
 }) {
+  const { selectedOrgId } = useOrg();
   const [openSprintId, setOpenSprintId] = useState<string | null>(null);
 
   if (sprints.length === 0) return <p className="text-body text-neutral-600">No sprints yet.</p>;
@@ -224,6 +267,7 @@ function SprintsTab({
           <span className="text-body-medium font-medium text-neutral-950">{openSprint.name}</span>
           <SprintStatusBadge status={openSprint.status} />
         </div>
+        {selectedOrgId && <CapacityPanel sprintId={openSprint.id} orgId={selectedOrgId} />}
         <SprintBoard tasks={sprintTasks} canEdit={canEdit} onTaskClick={onTaskClick} onStatusChange={onStatusChange} />
       </div>
     );
@@ -320,8 +364,11 @@ function TasksTab({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (taskId:
 function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: string | null; onSaved: () => void }) {
   const { can } = useOrg();
   const canUpdate = can("project", "update");
+  const canUpdateBudget = can("budget", "update");
   const [name, setName] = useState(project.name);
   const [status, setStatus] = useState(project.status);
+  const [budgetAllocated, setBudgetAllocated] = useState(project.budgetAllocated?.toString() ?? "");
+  const [budgetSpent, setBudgetSpent] = useState(project.budgetSpent?.toString() ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -329,10 +376,24 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
     e.preventDefault();
     setSaving(true);
     setError(null);
+
+    // Only send fields the role can actually change — sending an unchanged
+    // name/status while only budget:update is granted would still trip
+    // the server's project:update check for no reason.
+    const payload: Record<string, unknown> = {};
+    if (canUpdate) {
+      payload.name = name;
+      payload.status = status;
+    }
+    if (canUpdateBudget) {
+      payload.budget_allocated = budgetAllocated === "" ? null : Number(budgetAllocated);
+      payload.budget_spent = budgetSpent === "" ? null : Number(budgetSpent);
+    }
+
     const res = await fetch(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, status }),
+      body: JSON.stringify(payload),
     });
     const body = await res.json();
     setSaving(false);
@@ -358,8 +419,37 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
           ))}
         </Select>
       </Field>
+
+      {/* FR-3.x (Prompt 3.2) — simple manual entry, no finance integration. */}
+      <div className="grid grid-cols-1 gap-4 border-t border-neutral-200 pt-4 sm:grid-cols-2">
+        <Field label="Budget allocated ($)">
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            className="w-full"
+            value={budgetAllocated}
+            onChange={(e) => setBudgetAllocated(e.target.value)}
+            disabled={!canUpdateBudget}
+            placeholder="Not set"
+          />
+        </Field>
+        <Field label="Budget spent ($)">
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            className="w-full"
+            value={budgetSpent}
+            onChange={(e) => setBudgetSpent(e.target.value)}
+            disabled={!canUpdateBudget}
+            placeholder="Not set"
+          />
+        </Field>
+      </div>
+
       <p className="text-small text-neutral-400">Org: {orgId}</p>
-      {canUpdate ? (
+      {canUpdate || canUpdateBudget ? (
         <Button type="submit" disabled={saving}>
           {saving ? "Saving…" : "Save changes"}
         </Button>

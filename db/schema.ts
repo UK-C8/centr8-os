@@ -4,6 +4,7 @@ import {
   date,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgPolicy,
   pgTable,
@@ -212,6 +213,11 @@ export const projects = pgTable(
     status: projectStatusEnum("status").notNull().default("planning"),
     startDate: date("start_date"),
     endDate: date("end_date"),
+    // FR-3.x (Prompt 3.2) — simple manual entry, no external finance
+    // integration. Nullable: a project has no budget until someone sets
+    // one. precision 12/scale 2 matches ordinary currency amounts.
+    budgetAllocated: numeric("budget_allocated", { precision: 12, scale: 2, mode: "number" }),
+    budgetSpent: numeric("budget_spent", { precision: 12, scale: 2, mode: "number" }),
   },
   () => [
     pgPolicy("projects_isolation", {
@@ -388,6 +394,12 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   "task",
   "task_dependency",
   "project_health_snapshot",
+  // FR-3.x (Prompt 3.2) — budget fields live on `projects` itself (no
+  // separate row/table to protect), so "budget" only ever needs an
+  // "update" grant. "capacity" and "api_key" are real tables below.
+  "budget",
+  "capacity",
+  "api_key",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -509,6 +521,64 @@ export const agentJobs = pgTable(
   },
   () => [
     pgPolicy("agent_jobs_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// --- Resource planning & budgeting (FR-3.x, Prompt 3.2) ---
+
+// One row per person per sprint — "how many points/hours they're available
+// for," set manually by a PM (no capacity-forecasting AI here, this is
+// Tier 0/no-AI per the prompt). Workload is never stored: it's always
+// computed live from tasks.estimate at read time (see app/api/capacity/
+// route.ts), so it can never drift from the actual assignments.
+export const sprintCapacities = pgTable(
+  "sprint_capacities",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sprintId: uuid("sprint_id")
+      .notNull()
+      .references(() => sprints.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull(),
+    capacity: integer("capacity").notNull(),
+  },
+  (table) => [
+    pgPolicy("sprint_capacities_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+    primaryKey({ columns: [table.sprintId, table.userId] }),
+  ],
+).enableRLS();
+
+// Machine-auth credentials for the read-only finance export
+// (app/api/v1/finance/projects/route.ts) — external accounting/ERP tools
+// have no Supabase user session, so they can't use the Bearer-JWT path
+// every other route uses. Only `keyHash` (sha256 of the raw key) is ever
+// stored; the raw key is shown once at creation and never persisted.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    keyHash: text("key_hash").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  () => [
+    pgPolicy("api_keys_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

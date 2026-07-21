@@ -18,7 +18,10 @@ export type ResourceType =
   | "sprint"
   | "task"
   | "task_dependency"
-  | "project_health_snapshot";
+  | "project_health_snapshot"
+  | "budget"
+  | "capacity"
+  | "api_key";
 
 export type PermissionAction = "create" | "read" | "update" | "delete";
 

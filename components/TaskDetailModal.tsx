@@ -16,7 +16,10 @@ type TaskDetail = {
   priority: string;
   estimate: number | null;
   assigneeId: string | null;
+  sprintId: string | null;
 };
+
+type CapacityRow = { userId: string; capacity: number; assigned: number };
 
 type Dependency = { taskId: string; dependsOnTaskId: string; type: string; dependsOnTitle?: string };
 
@@ -26,6 +29,11 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
   const canAddDependency = can("task_dependency", "create");
   const canRemoveDependency = can("task_dependency", "delete");
   const [task, setTask] = useState<TaskDetail | null>(null);
+  // Snapshot of the task as loaded — used to back out its own contribution
+  // to the assignee's assigned total below, so editing this task's
+  // estimate doesn't double-count it (Prompt 3.2 task 3).
+  const [originalTask, setOriginalTask] = useState<TaskDetail | null>(null);
+  const [capacity, setCapacity] = useState<CapacityRow[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +53,16 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
       .then(async ([taskBody, depBody]) => {
         if (!taskBody.data) throw new Error(taskBody.error ?? "Failed to load task");
         setTask(taskBody.data);
+        setOriginalTask(taskBody.data);
+
+        if (taskBody.data.sprintId) {
+          fetch(`/api/capacity?sprint_id=${taskBody.data.sprintId}`)
+            .then((r) => r.json())
+            .then((b) => setCapacity(b.data ?? []))
+            .catch(() => setCapacity([]));
+        } else {
+          setCapacity([]);
+        }
 
         // No endpoint returns dependency titles joined — resolved
         // per-dependency here (small N per task, same pattern as the
@@ -111,6 +129,19 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
     load();
   }
 
+  // Prompt 3.2 task 3 — informational only, never blocks the save. Projects
+  // what the assignee's total would be if the current (possibly unsaved)
+  // form values were saved: their persisted assigned total, minus this
+  // task's own persisted contribution (so editing it doesn't double-count),
+  // plus its current estimate.
+  const assigneeCapacity = task?.assigneeId ? capacity.find((c) => c.userId === task.assigneeId) : undefined;
+  const originalContribution =
+    task && originalTask && originalTask.assigneeId === task.assigneeId ? (originalTask.estimate ?? 0) : 0;
+  const projectedAssigned = assigneeCapacity
+    ? assigneeCapacity.assigned - originalContribution + (task?.estimate ?? 0)
+    : null;
+  const overAllocated = assigneeCapacity != null && projectedAssigned != null && projectedAssigned > assigneeCapacity.capacity;
+
   return (
     <Modal onClose={onClose}>
       {loading ? (
@@ -176,6 +207,15 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
               />
             </Field>
           </div>
+
+          {overAllocated && assigneeCapacity && (
+            <div className="flex items-center gap-2 rounded-md border-l-4 border-warning-600 bg-warning-100 px-3 py-2">
+              <Badge color="warning">Over capacity</Badge>
+              <p className="text-small text-warning-600">
+                This assignee would be at {projectedAssigned}/{assigneeCapacity.capacity} pts for this sprint.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2 border-t border-neutral-200 pt-4">
             <h3 className="text-h3 font-semibold text-neutral-950">Dependencies</h3>
