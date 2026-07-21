@@ -1,10 +1,11 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "npm ci"
   },
   "deploy": {
-    "startCommand": "npm run worker",
+    "startCommand": "node node_modules/.bin/tsx workers/agent-worker.ts",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
