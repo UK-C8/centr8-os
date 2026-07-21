@@ -241,6 +241,17 @@ export const milestones = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     dueDate: date("due_date"),
+    // FR-4.x (Prompt 3.1) task 3 — Tier 1 client-approval action. At most
+    // one of the two approvedBy* columns is ever set: an internal org
+    // member approves via app/api/milestones/[id]/approve, a client
+    // approves via the token-authed app/api/portal/[org_slug]/milestones/
+    // [id]/approve — both funnel through lib/api/milestoneApproval.ts so
+    // the audit_log entry is identical either way.
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedByUserId: uuid("approved_by_user_id"),
+    approvedByClientAccessId: uuid("approved_by_client_access_id").references(() => clientPortalAccess.id, {
+      onDelete: "set null",
+    }),
   },
   () => [
     pgPolicy("milestones_isolation", {
@@ -400,12 +411,19 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   "budget",
   "capacity",
   "api_key",
+  // FR-4.x (Prompt 3.1) — client_portal_access grants live under their
+  // own resource type ("configure" covers create/update/revoke as one
+  // verb, same simplification "budget:update" used in Prompt 3.2).
+  // "milestone" already exists above; it just gains the "approve" action.
+  "portal",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
   "read",
   "update",
   "delete",
+  "approve",
+  "configure",
 ]);
 
 // org_id nullable, same pattern as `templates`: null rows are the built-in
@@ -579,6 +597,46 @@ export const apiKeys = pgTable(
   },
   () => [
     pgPolicy("api_keys_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// --- Client portals (FR-4.x, Prompt 3.1) ---
+
+// One row = one client's access to one project, identified by a bearer
+// token in the portal URL rather than a Supabase Auth account — client
+// contacts aren't org members and shouldn't need one just to view a
+// project. If a client needs multiple projects they get multiple grants
+// (multiple links); no separate "client identity" table, kept deliberately
+// simple. Same "machine auth via a hashed secret, not a user JWT" shape as
+// api_keys (Prompt 3.2) — see lib/api/portalAccess.ts.
+export const clientPortalAccess = pgTable(
+  "client_portal_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    clientName: text("client_name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    // Field-level visibility (task 1: "configurable visibility per
+    // field") — an array of field names hidden from this client. Only
+    // "budget" is a real switch today (the one field Prompt 3.2 actually
+    // added); the column is jsonb/array-shaped, not a single boolean, so
+    // hiding more fields later is a UI/read-path change, not a migration.
+    hiddenFields: jsonb("hidden_fields").notNull().default(["budget"]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  () => [
+    pgPolicy("client_portal_access_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

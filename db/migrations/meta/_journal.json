@@ -134,6 +134,27 @@
       "when": 1784670989670,
       "tag": "0018_seed_budgeting_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784672770063,
+      "tag": "0019_happy_vanisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784672781483,
+      "tag": "0020_force_rls_client_portal_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784672799766,
+      "tag": "0021_seed_portal_and_milestone_approve_permissions",
+      "breakpoints": true
     }
   ]
 }

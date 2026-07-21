@@ -21,9 +21,10 @@ export type ResourceType =
   | "project_health_snapshot"
   | "budget"
   | "capacity"
-  | "api_key";
+  | "api_key"
+  | "portal";
 
-export type PermissionAction = "create" | "read" | "update" | "delete";
+export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "configure";
 
 // Call inside the same withOrgContext(userId, ...) transaction the mutation
 // itself runs in, right after the target resource's orgId is known.

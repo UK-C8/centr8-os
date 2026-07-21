@@ -29,7 +29,7 @@ type Project = {
   budgetAllocated: number | null;
   budgetSpent: number | null;
 };
-type Milestone = { id: string; name: string; dueDate: string | null };
+type Milestone = { id: string; name: string; dueDate: string | null; approvedAt: string | null };
 type Sprint = { id: string; name: string; status: string; startDate: string | null; endDate: string | null };
 
 const TABS = ["Overview", "Sprints", "Tasks", "Settings"] as const;
@@ -151,9 +151,11 @@ function OverviewTab({
 }) {
   const { selectedOrgId, can } = useOrg();
   const canCreate = can("milestone", "create");
+  const canApprove = can("milestone", "approve");
   const [name, setName] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   async function addMilestone(e: React.FormEvent) {
     e.preventDefault();
@@ -170,6 +172,13 @@ function OverviewTab({
     onMilestoneAdded();
   }
 
+  async function approve(milestoneId: string) {
+    setApprovingId(milestoneId);
+    await fetch(`/api/milestones/${milestoneId}/approve`, { method: "POST" });
+    setApprovingId(null);
+    onMilestoneAdded();
+  }
+
   return (
     <div className="space-y-6">
       {(project.budgetAllocated != null || project.budgetSpent != null) && <BudgetSummary project={project} />}
@@ -182,9 +191,20 @@ function OverviewTab({
         <Card padding="sm" className="p-0">
           <ul className="divide-y divide-neutral-200">
             {milestones.map((m) => (
-              <li key={m.id} className="flex items-center justify-between px-4 py-3 text-body">
+              <li key={m.id} className="flex items-center justify-between gap-2 px-4 py-3 text-body">
                 <span className="text-neutral-950">{m.name}</span>
-                <span className="text-neutral-600">{m.dueDate ?? "No due date"}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-600">{m.dueDate ?? "No due date"}</span>
+                  {m.approvedAt ? (
+                    <Badge color="success">Approved</Badge>
+                  ) : (
+                    canApprove && (
+                      <Button variant="secondary" onClick={() => approve(m.id)} disabled={approvingId === m.id}>
+                        {approvingId === m.id ? "Approving…" : "Approve"}
+                      </Button>
+                    )
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -405,7 +425,8 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
   }
 
   return (
-    <form onSubmit={handleSave} className="max-w-md space-y-4">
+    <div className="max-w-md space-y-8">
+    <form onSubmit={handleSave} className="space-y-4">
       {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
       <Field label="Name">
         <Input className="w-full" value={name} onChange={(e) => setName(e.target.value)} disabled={!canUpdate} />
@@ -457,5 +478,142 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
         <p className="text-small text-neutral-400">Your role doesn't allow editing project settings.</p>
       )}
     </form>
+
+      {orgId && <PortalAccessSection projectId={project.id} orgId={orgId} />}
+    </div>
+  );
+}
+
+type PortalGrant = { id: string; clientName: string; hiddenFields: string[]; createdAt: string; revokedAt: string | null };
+
+// FR-4.x (Prompt 3.1) — who can view this project's client portal, and
+// whether budget is hidden from them. Lives in Settings alongside the
+// budget fields it controls visibility of.
+function PortalAccessSection({ projectId, orgId }: { projectId: string; orgId: string }) {
+  const { can, orgs } = useOrg();
+  const orgSlug = orgs.find((o) => o.id === orgId)?.slug ?? null;
+  const canRead = can("portal", "read");
+  const canConfigure = can("portal", "configure");
+
+  const [grants, setGrants] = useState<PortalGrant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [clientName, setClientName] = useState("");
+  const [hideBudget, setHideBudget] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [justCreated, setJustCreated] = useState<{ clientName: string; token: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    if (!canRead) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    fetch(`/api/portal-access?project_id=${projectId}&org_id=${orgId}`)
+      .then((r) => r.json())
+      .then((b) => setGrants(b.data ?? []))
+      .catch(() => setGrants([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [projectId, orgId, canRead]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clientName) return;
+    setCreating(true);
+    setError(null);
+    const res = await fetch("/api/portal-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        org_id: orgId,
+        project_id: projectId,
+        client_name: clientName,
+        hidden_fields: hideBudget ? ["budget"] : [],
+      }),
+    });
+    const body = await res.json();
+    setCreating(false);
+    if (!res.ok) {
+      setError(body.error ?? "Failed to create access link");
+      return;
+    }
+    setJustCreated({ clientName: body.data.clientName, token: body.data.token });
+    setClientName("");
+    load();
+  }
+
+  async function handleRevoke(id: string) {
+    await fetch(`/api/portal-access/${id}`, { method: "DELETE" });
+    load();
+  }
+
+  if (!canRead) return null;
+
+  return (
+    <Card className="space-y-4">
+      <div>
+        <h2 className="text-h2 font-semibold text-neutral-950">Client portal access</h2>
+        <p className="mt-1 text-small text-neutral-600">
+          Each grant is a link a client can open without logging in. Budget is hidden from clients by default.
+        </p>
+      </div>
+
+      {justCreated && (
+        <div className="space-y-1.5 rounded-md border-l-4 border-warning-600 bg-warning-100 px-3 py-3">
+          <p className="text-small font-medium text-warning-600">
+            Copy this link now — it won&apos;t be shown again for &ldquo;{justCreated.clientName}&rdquo;.
+          </p>
+          <code className="block break-all rounded-sm bg-neutral-50 px-2 py-1.5 text-small text-neutral-950">
+            {typeof window !== "undefined" ? window.location.origin : ""}/portal/{orgSlug ?? "…"}?token={justCreated.token}
+          </code>
+          <Button variant="secondary" onClick={() => setJustCreated(null)}>
+            Done
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
+
+      {loading ? (
+        <p className="text-body text-neutral-600">Loading…</p>
+      ) : grants.length === 0 ? (
+        <p className="text-body text-neutral-600">No client access grants yet.</p>
+      ) : (
+        <ul className="divide-y divide-neutral-200 rounded-md border border-neutral-300">
+          {grants.map((g) => (
+            <li key={g.id} className="flex items-center justify-between gap-2 px-4 py-3 text-body">
+              <div>
+                <span className="text-neutral-950">{g.clientName}</span>
+                <span className="ml-2 text-small text-neutral-600">
+                  {g.revokedAt ? "Revoked" : g.hiddenFields.includes("budget") ? "Budget hidden" : "Budget visible"}
+                </span>
+              </div>
+              {canConfigure && !g.revokedAt && (
+                <button onClick={() => handleRevoke(g.id)} className="text-small text-danger-600 hover:underline">
+                  Revoke
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canConfigure && (
+        <form onSubmit={handleCreate} className="space-y-3 border-t border-neutral-200 pt-4">
+          <Field label="Client name">
+            <Input className="w-full" placeholder="e.g. Acme Corp" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+          </Field>
+          <label className="flex items-center gap-2 text-body text-neutral-800">
+            <input type="checkbox" checked={hideBudget} onChange={(e) => setHideBudget(e.target.checked)} />
+            Hide budget from this client
+          </label>
+          <Button type="submit" variant="secondary" disabled={creating || !clientName}>
+            {creating ? "Creating…" : "+ New access link"}
+          </Button>
+        </form>
+      )}
+    </Card>
   );
 }
