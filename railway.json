@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm ci"
+    "buildCommand": "echo 'no build step needed — worker runs via tsx directly'"
   },
   "deploy": {
     "startCommand": "node node_modules/.bin/tsx workers/agent-worker.ts",
