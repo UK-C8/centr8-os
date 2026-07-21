@@ -1,10 +1,14 @@
-// FR-8.x baseline health monitoring, Tier 0 — read-only. Computes signals
-// straight from tasks/sprints/task_dependencies; never writes to any of
-// them. The caller (app/api/ai/project-health/route.ts) is the only place
-// that persists anything, and only to project_health_snapshots.
+// Monitor agent (FR-8.x), Tier 0 — read-only. Computes signals straight
+// from tasks/sprints/task_dependencies and writes a plain-language summary;
+// never writes to any work-hierarchy table itself. The API route
+// (app/api/ai/project-health/route.ts) is the only place that persists a
+// project_health_snapshots row, after polling this job's result.
+//
+// Migrated from lib/ai/healthSignals.ts + lib/ai/gemini.ts (Prompt 2.1).
 import { eq, inArray } from "drizzle-orm";
 import type { OrgScopedDb } from "@/db/withOrgContext";
 import { sprints, taskDependencies, tasks } from "@/db/schema";
+import { AgentError, callGemini } from "./shared/geminiClient";
 
 export interface ProjectHealthSignals {
   computedAt: string;
@@ -92,5 +96,41 @@ export async function computeProjectHealthSignals(
     overdueTasks,
     blockedTasks: blockedTaskIds.size,
     sprints: sprintSignals,
+  };
+}
+
+const HEALTH_SUMMARY_INSTRUCTIONS = `You are the Monitor agent for Centr8 OS, an AI project manager. Given a project's name and computed health signals (task counts, overdue count, blocked count, per-sprint burn rates), write a plain-language health summary: 2-4 sentences, no markdown, no headings. State the overall picture, then call out anything worth a human's attention (overdue or blocked tasks, a stalled sprint). If the signals look healthy, say so plainly — don't invent risk that isn't in the data. This is informational only; do not suggest or imply any automatic action.`;
+
+export async function generateHealthSummary(projectName: string, signals: ProjectHealthSignals): Promise<string> {
+  const text = await callGemini(
+    `${HEALTH_SUMMARY_INSTRUCTIONS}\n\nProject: ${projectName}\nSignals: ${JSON.stringify(signals)}`,
+  );
+  return text.trim();
+}
+
+export interface ProjectHealthScanInput {
+  projectId: string;
+  projectName: string;
+}
+
+export interface ProjectHealthScanOutput {
+  signals: ProjectHealthSignals;
+  aiSummary: string;
+}
+
+// job_type "project_health_scan" — registered in lib/agents/registry.ts.
+// Takes the db handle as a closure argument (via a factory) rather than
+// importing one directly, since the worker connects as service_role and
+// the signals queries below are already explicitly project_id-scoped —
+// see workers/db.ts.
+export function makeProjectHealthScanJob(db: OrgScopedDb) {
+  return async function runProjectHealthScanJob(input: unknown): Promise<ProjectHealthScanOutput> {
+    const { projectId, projectName } = input as ProjectHealthScanInput;
+    if (typeof projectId !== "string" || typeof projectName !== "string") {
+      throw new AgentError("project_health_scan job requires string `projectId` and `projectName`");
+    }
+    const signals = await computeProjectHealthSignals(db, projectId);
+    const aiSummary = await generateHealthSummary(projectName, signals);
+    return { signals, aiSummary };
   };
 }

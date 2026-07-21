@@ -33,8 +33,8 @@ type Tab = (typeof TABS)[number];
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { selectedOrgId, selectedOrg } = useOrg();
-  const canEdit = selectedOrg?.role !== "viewer";
+  const { selectedOrgId, can } = useOrg();
+  const canEditTasks = can("task", "update");
 
   const [tab, setTab] = useState<Tab>("Overview");
   const [project, setProject] = useState<Project | null>(null);
@@ -113,7 +113,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       {tab === "Overview" && <OverviewTab projectId={id} milestones={milestones} onMilestoneAdded={loadAll} />}
       {tab === "Sprints" && (
-        <SprintsTab sprints={sprints} tasks={tasks} canEdit={canEdit} onTaskClick={setOpenTaskId} onStatusChange={handleStatusChange} />
+        <SprintsTab sprints={sprints} tasks={tasks} canEdit={canEditTasks} onTaskClick={setOpenTaskId} onStatusChange={handleStatusChange} />
       )}
       {tab === "Tasks" && <TasksTab tasks={tasks} onTaskClick={setOpenTaskId} />}
       {tab === "Settings" && project && (
@@ -143,7 +143,8 @@ function OverviewTab({
   milestones: Milestone[];
   onMilestoneAdded: () => void;
 }) {
-  const { selectedOrgId } = useOrg();
+  const { selectedOrgId, can } = useOrg();
+  const canCreate = can("milestone", "create");
   const [name, setName] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
@@ -181,13 +182,15 @@ function OverviewTab({
         </Card>
       )}
 
-      <form onSubmit={addMilestone} className="flex flex-wrap gap-2">
-        <Input className="min-w-0 flex-1" placeholder="New milestone name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        <Button type="submit" disabled={saving || !name}>
-          Add
-        </Button>
-      </form>
+      {canCreate && (
+        <form onSubmit={addMilestone} className="flex flex-wrap gap-2">
+          <Input className="min-w-0 flex-1" placeholder="New milestone name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <Button type="submit" disabled={saving || !name}>
+            Add
+          </Button>
+        </form>
+      )}
     </div>
   );
 }
@@ -315,6 +318,8 @@ function TasksTab({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (taskId:
 }
 
 function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: string | null; onSaved: () => void }) {
+  const { can } = useOrg();
+  const canUpdate = can("project", "update");
   const [name, setName] = useState(project.name);
   const [status, setStatus] = useState(project.status);
   const [saving, setSaving] = useState(false);
@@ -342,10 +347,10 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
     <form onSubmit={handleSave} className="max-w-md space-y-4">
       {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
       <Field label="Name">
-        <Input className="w-full" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input className="w-full" value={name} onChange={(e) => setName(e.target.value)} disabled={!canUpdate} />
       </Field>
       <Field label="Status">
-        <Select className="w-full" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <Select className="w-full" value={status} onChange={(e) => setStatus(e.target.value)} disabled={!canUpdate}>
           {PROJECT_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -354,9 +359,13 @@ function SettingsTab({ project, orgId, onSaved }: { project: Project; orgId: str
         </Select>
       </Field>
       <p className="text-small text-neutral-400">Org: {orgId}</p>
-      <Button type="submit" disabled={saving}>
-        {saving ? "Saving…" : "Save changes"}
-      </Button>
+      {canUpdate ? (
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      ) : (
+        <p className="text-small text-neutral-400">Your role doesn't allow editing project settings.</p>
+      )}
     </form>
   );
 }

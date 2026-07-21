@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useOrg } from "@/lib/context/OrgContext";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -20,6 +21,10 @@ type TaskDetail = {
 type Dependency = { taskId: string; dependsOnTaskId: string; type: string; dependsOnTitle?: string };
 
 export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string; onClose: () => void; onChanged: () => void }) {
+  const { can } = useOrg();
+  const canUpdateTask = can("task", "update");
+  const canAddDependency = can("task_dependency", "create");
+  const canRemoveDependency = can("task_dependency", "delete");
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,9 +121,10 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <input
-              className="flex-1 rounded-md border border-transparent bg-transparent text-h2 font-semibold text-neutral-950 focus:border-neutral-300 focus:bg-neutral-50 focus:outline focus:outline-2 focus:outline-primary-600"
+              className="flex-1 rounded-md border border-transparent bg-transparent text-h2 font-semibold text-neutral-950 focus:border-neutral-300 focus:bg-neutral-50 focus:outline focus:outline-2 focus:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               value={task.title}
               onChange={(e) => setTask({ ...task, title: e.target.value })}
+              disabled={!canUpdateTask}
             />
             <button onClick={onClose} className="ml-3 text-body text-neutral-600 hover:text-neutral-950" aria-label="Close">
               ✕
@@ -128,12 +134,12 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
           {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
 
           <Field label="Description">
-            <Textarea className="w-full" rows={3} value={task.description ?? ""} onChange={(e) => setTask({ ...task, description: e.target.value || null })} />
+            <Textarea className="w-full" rows={3} value={task.description ?? ""} onChange={(e) => setTask({ ...task, description: e.target.value || null })} disabled={!canUpdateTask} />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Status">
-              <Select className="w-full" value={task.status} onChange={(e) => setTask({ ...task, status: e.target.value })}>
+              <Select className="w-full" value={task.status} onChange={(e) => setTask({ ...task, status: e.target.value })} disabled={!canUpdateTask}>
                 {TASK_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {TASK_STATUS_LABELS[s]}
@@ -142,7 +148,7 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
               </Select>
             </Field>
             <Field label="Priority">
-              <Select className="w-full" value={task.priority} onChange={(e) => setTask({ ...task, priority: e.target.value })}>
+              <Select className="w-full" value={task.priority} onChange={(e) => setTask({ ...task, priority: e.target.value })} disabled={!canUpdateTask}>
                 {TASK_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -156,6 +162,7 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
                 className="w-full"
                 value={task.estimate ?? ""}
                 onChange={(e) => setTask({ ...task, estimate: e.target.value ? Number(e.target.value) : null })}
+                disabled={!canUpdateTask}
               />
             </Field>
             {/* No user directory endpoint exists — assignee is a raw user id, not a name picker. */}
@@ -165,6 +172,7 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
                 value={task.assigneeId ?? ""}
                 onChange={(e) => setTask({ ...task, assigneeId: e.target.value || null })}
                 placeholder="Unassigned"
+                disabled={!canUpdateTask}
               />
             </Field>
           </div>
@@ -180,36 +188,42 @@ export function TaskDetailModal({ taskId, onClose, onChanged }: { taskId: string
                     <span className="text-neutral-950">
                       {d.dependsOnTitle} <Badge>{d.type}</Badge>
                     </span>
-                    <button
-                      onClick={() => removeDependency(d.dependsOnTaskId)}
-                      className="text-small text-danger-600 hover:underline"
-                    >
-                      Remove
-                    </button>
+                    {canRemoveDependency && (
+                      <button
+                        onClick={() => removeDependency(d.dependsOnTaskId)}
+                        className="text-small text-danger-600 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
             {depError && <p className="text-small text-danger-600">{depError}</p>}
-            <div className="flex flex-wrap gap-2">
-              <Input className="min-w-0 flex-1" placeholder="Depends-on task ID" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} />
-              <Select value={newDepType} onChange={(e) => setNewDepType(e.target.value)}>
-                <option value="blocks">blocks</option>
-                <option value="blocked_by">blocked_by</option>
-              </Select>
-              <Button variant="secondary" onClick={addDependency} disabled={!newDepId}>
-                Add
-              </Button>
-            </div>
+            {canAddDependency && (
+              <div className="flex flex-wrap gap-2">
+                <Input className="min-w-0 flex-1" placeholder="Depends-on task ID" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} />
+                <Select value={newDepType} onChange={(e) => setNewDepType(e.target.value)}>
+                  <option value="blocks">blocks</option>
+                  <option value="blocked_by">blocked_by</option>
+                </Select>
+                <Button variant="secondary" onClick={addDependency} disabled={!newDepId}>
+                  Add
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 border-t border-neutral-200 pt-4">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
+            {canUpdateTask && (
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            )}
           </div>
         </div>
       )}

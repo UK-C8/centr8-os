@@ -464,3 +464,55 @@ export const projectHealthSnapshots = pgTable(
     }),
   ],
 ).enableRLS();
+
+// --- Agent job queue (Prompt 2.1) ---
+// CLAUDE.md §5/§6: five composable agents (Planner/Monitor/Analyst/Writer/
+// Communicator), coordinated by a Railway worker polling this table via
+// `SELECT ... FOR UPDATE SKIP LOCKED` (workers/agent-worker.ts) — not
+// called inline from a Next.js request. API routes insert a row here and
+// poll it for a result instead of calling Gemini directly.
+export const agentTypeEnum = pgEnum("agent_type", [
+  "planner",
+  "monitor",
+  "analyst",
+  "writer",
+  "communicator",
+]);
+// Mirrors CLAUDE.md §4's four autonomy tiers exactly (tier_0 = Suggest
+// Only ... tier_3 = Full Autonomy) — every job is stamped with the tier
+// the acting agent ran at, independent of the job's pass/fail outcome.
+export const autonomyTierEnum = pgEnum("autonomy_tier", ["tier_0", "tier_1", "tier_2", "tier_3"]);
+export const agentJobStatusEnum = pgEnum("agent_job_status", ["pending", "processing", "done", "failed"]);
+
+export const agentJobs = pgTable(
+  "agent_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    agentType: agentTypeEnum("agent_type").notNull(),
+    // Free text, not an enum — mirrors audit_log.action's convention
+    // (e.g. "create_project_draft", "project_health_scan") so adding a new
+    // job type never needs a migration, only a new registry entry
+    // (lib/agents/registry.ts).
+    jobType: text("job_type").notNull(),
+    tier: autonomyTierEnum("tier").notNull().default("tier_0"),
+    status: agentJobStatusEnum("status").notNull().default("pending"),
+    requestedByUserId: uuid("requested_by_user_id"),
+    input: jsonb("input").notNull().default({}),
+    output: jsonb("output"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  () => [
+    pgPolicy("agent_jobs_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();

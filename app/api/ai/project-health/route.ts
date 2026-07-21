@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { withOrgContext } from "@/db/withOrgContext";
-import { auditLog, projectHealthSnapshots, projects } from "@/db/schema";
-import { ApiError, handleApiError, requireUserId } from "@/lib/api/helpers";
+import { agentJobs, projectHealthSnapshots, projects } from "@/db/schema";
+import { ApiError, handleApiError, pollAgentJob, requireUserId } from "@/lib/api/helpers";
 import { requirePermission } from "@/lib/api/permissions";
-import { computeProjectHealthSignals } from "@/lib/ai/healthSignals";
-import { generateHealthSummary } from "@/lib/ai/gemini";
+import type { ProjectHealthScanInput, ProjectHealthScanOutput } from "@/lib/agents/monitor";
 
 // Dashboard read: latest snapshot per project in the org. Tier 0 — this
 // route never touches goals/projects/milestones/sprints/tasks, only reads
@@ -34,10 +33,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// On-demand scan (the "scheduled or on-demand function" — no scheduler
-// infra exists yet, Railway worker is Phase 2, so this is the trigger for
-// now). Tier 0 — the only write is a new project_health_snapshots row plus
-// an audit_log entry; nothing here ever mutates task/project/sprint data.
+// On-demand scan. Tier 0 — the only write is a new project_health_snapshots
+// row; nothing here ever mutates task/project/sprint data.
+//
+// Prompt 2.1: enqueues a Monitor job for workers/agent-worker.ts to pick up
+// (SELECT ... FOR UPDATE SKIP LOCKED) instead of computing signals and
+// calling Gemini inline. The worker writes the audit_log entry
+// (lib/agents/registry.ts's "project_health_snapshot_generated"
+// auditAction); this route persists the snapshot row once the job's
+// output comes back, same as before.
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
@@ -46,38 +52,38 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, "org_id and project_id are required");
     }
 
-    const { project, signals } = await withOrgContext(userId, async (db) => {
+    const project = await withOrgContext(userId, async (db) => {
       await requirePermission(db, userId, body.org_id, "project_health_snapshot", "create");
 
       const [project] = await db.select().from(projects).where(eq(projects.id, body.project_id));
       if (!project) throw new ApiError(404, "Project not found");
-
-      const signals = await computeProjectHealthSignals(db, body.project_id);
-      return { project, signals };
+      return project;
     });
 
-    // Gemini call happens outside the DB transaction so the pooled
-    // connection isn't held open for a slow external request.
-    const aiSummary = await generateHealthSummary(project.name, signals);
+    const input: ProjectHealthScanInput = { projectId: body.project_id, projectName: project.name };
+    const [job] = await withOrgContext(userId, (db) =>
+      db
+        .insert(agentJobs)
+        .values({
+          orgId: body.org_id,
+          agentType: "monitor",
+          jobType: "project_health_scan",
+          tier: "tier_0",
+          requestedByUserId: userId,
+          input,
+        })
+        .returning(),
+    );
 
-    const [snapshot] = await withOrgContext(userId, async (db) => {
-      const inserted = await db
+    const finished = await pollAgentJob(userId, job.id);
+    const { signals, aiSummary } = finished.output as ProjectHealthScanOutput;
+
+    const [snapshot] = await withOrgContext(userId, (db) =>
+      db
         .insert(projectHealthSnapshots)
         .values({ orgId: body.org_id, projectId: body.project_id, signals, aiSummary })
-        .returning();
-
-      await db.insert(auditLog).values({
-        orgId: body.org_id,
-        actorUserId: userId,
-        actorType: "ai",
-        action: "project_health_snapshot_generated",
-        targetType: "project",
-        targetId: body.project_id,
-        metadata: { snapshotId: inserted[0].id, signals },
-      });
-
-      return inserted;
-    });
+        .returning(),
+    );
 
     return NextResponse.json({ data: { ...snapshot, projectName: project.name } }, { status: 201 });
   } catch (err) {

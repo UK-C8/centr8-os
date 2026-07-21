@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useOrg } from "@/lib/context/OrgContext";
-import type { ProjectHealthSignals } from "@/lib/ai/healthSignals";
+import type { ProjectHealthSignals } from "@/lib/agents/monitor";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";

@@ -18,8 +18,8 @@ type Sprint = { id: string; projectId: string; name: string; status: string; sta
 // per-project fan-out pattern already used by the dashboard's task counts
 // and the projects list's milestone counts.
 export default function SprintsPage() {
-  const { selectedOrgId, selectedOrg, loading: orgLoading } = useOrg();
-  const canEdit = selectedOrg?.role !== "viewer";
+  const { selectedOrgId, can, loading: orgLoading } = useOrg();
+  const canEdit = can("task", "update");
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);

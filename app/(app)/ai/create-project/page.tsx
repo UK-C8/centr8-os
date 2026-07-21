@@ -18,7 +18,12 @@ type CreatedResult = {
 };
 
 export default function CreateProjectPage() {
-  const { selectedOrgId } = useOrg();
+  const { selectedOrgId, can, permissionsLoading } = useOrg();
+  // Generate/Accept/Reject all gate on project:create server-side (drafts
+  // are never persisted — Accept is the only path that creates a real
+  // project row, and Reject just logs the decision) — same check for all
+  // three so the UI doesn't invite a role into a flow it can't finish.
+  const canCreateProject = can("project", "create");
   const [prompt, setPrompt] = useState("");
   const [draft, setDraft] = useState<ProjectDraft | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -111,21 +116,27 @@ export default function CreateProjectPage() {
     <div className="max-w-3xl space-y-6">
       <h1 className="text-display font-semibold text-neutral-950">AI Project Creation</h1>
 
-      <Card padding="sm" className="space-y-3">
-        <label className="block text-body-medium font-medium text-neutral-800">
-          Describe the project
-          <Textarea 
-            className="mt-1 w-full"
-            rows={4}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Launch a customer referral program by end of Q3, including a landing page, reward tracking, and email campaigns."
-          />
-        </label>
-        <Button onClick={handleGenerate} disabled={generating || !selectedOrgId || !prompt}>
-          {generating ? "Generating…" : "Generate Draft"}
-        </Button>
-      </Card>
+      {!permissionsLoading && !canCreateProject ? (
+        <p className="rounded-md bg-warning-100 p-3 text-body text-warning-600">
+          Your role doesn't allow creating projects, so drafts can't be generated or accepted here.
+        </p>
+      ) : (
+        <Card padding="sm" className="space-y-3">
+          <label className="block text-body-medium font-medium text-neutral-800">
+            Describe the project
+            <Textarea
+              className="mt-1 w-full"
+              rows={4}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Launch a customer referral program by end of Q3, including a landing page, reward tracking, and email campaigns."
+            />
+          </label>
+          <Button onClick={handleGenerate} disabled={generating || !selectedOrgId || !prompt}>
+            {generating ? "Generating…" : "Generate Draft"}
+          </Button>
+        </Card>
+      )}
 
       {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
 

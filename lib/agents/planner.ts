@@ -1,8 +1,12 @@
-// Planner agent (FR-7.x), Tier 0 — Suggest Only. This only ever calls out
-// to Gemini and returns a draft; it must never write to the DB itself. The
-// human-in-the-loop write path lives entirely in the accept route.
-import { ApiError } from "@/lib/api/helpers";
-import type { ProjectDraft } from "./projectDraft";
+// Planner agent (FR-7.x), Tier 0 — Suggest Only. Only ever produces a
+// draft; it must never write to the DB itself. The human-in-the-loop write
+// path lives entirely in app/api/ai/create-project-draft/accept/route.ts.
+//
+// Migrated from lib/ai/gemini.ts (Prompt 2.1) — this is now the only place
+// that owns draft-generation logic; the API route just enqueues a job and
+// polls for this handler's result via workers/agent-worker.ts.
+import { AgentError, callGemini } from "./shared/geminiClient";
+import type { ProjectDraft } from "@/lib/ai/projectDraft";
 
 const DRAFT_INSTRUCTIONS = `You are the Planner agent for Centr8 OS, an AI project manager. Given a free-text request, produce a structured project-creation draft as strict JSON matching exactly this shape (no extra keys, no markdown fences, no commentary):
 
@@ -30,43 +34,8 @@ const DRAFT_INSTRUCTIONS = `You are the Planner agent for Centr8 OS, an AI proje
 
 Dates are "YYYY-MM-DD" or null. "sprint_index" is the index of the task's sprint within the "sprints" array above, or null if unassigned. Default "project.status" to "planning" and every sprint's "status" to "planned" unless the request implies otherwise. Keep it realistic and scoped to what was actually asked — a handful of milestones, a few sprints, a modest task list is typical, not a hard rule.`;
 
-// Shared request path for every Gemini call in the app — draft generation
-// and health summaries alike. `json: true` asks Gemini for strict JSON
-// output (still returned as text; the caller parses it); omit it for a
-// plain-language response.
-async function callGemini(promptText: string, opts: { json?: boolean; temperature?: number } = {}): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new ApiError(500, "GEMINI_API_KEY is not configured");
-  }
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: {
-          temperature: opts.temperature ?? 0.4,
-          ...(opts.json ? { responseMimeType: "application/json" } : {}),
-        },
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new ApiError(502, `Gemini request failed (${res.status}): ${body.slice(0, 300)}`);
-  }
-
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof text !== "string") {
-    throw new ApiError(502, "Gemini returned no content");
-  }
-  return text;
+export interface CreateProjectDraftInput {
+  prompt: string;
 }
 
 export async function generateProjectDraft(prompt: string): Promise<ProjectDraft> {
@@ -76,33 +45,33 @@ export async function generateProjectDraft(prompt: string): Promise<ProjectDraft
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new ApiError(502, "Gemini returned malformed JSON");
+    throw new AgentError("Gemini returned malformed JSON");
   }
 
   return normalizeDraft(parsed);
 }
 
-const HEALTH_SUMMARY_INSTRUCTIONS = `You are the Monitor agent for Centr8 OS, an AI project manager. Given a project's name and computed health signals (task counts, overdue count, blocked count, per-sprint burn rates), write a plain-language health summary: 2-4 sentences, no markdown, no headings. State the overall picture, then call out anything worth a human's attention (overdue or blocked tasks, a stalled sprint). If the signals look healthy, say so plainly — don't invent risk that isn't in the data. This is informational only; do not suggest or imply any automatic action.`;
-
-export async function generateHealthSummary(projectName: string, signals: unknown): Promise<string> {
-  const text = await callGemini(
-    `${HEALTH_SUMMARY_INSTRUCTIONS}\n\nProject: ${projectName}\nSignals: ${JSON.stringify(signals)}`,
-  );
-  return text.trim();
+// job_type "create_project_draft" — registered in lib/agents/registry.ts.
+export async function runCreateProjectDraftJob(input: unknown): Promise<ProjectDraft> {
+  const { prompt } = input as CreateProjectDraftInput;
+  if (typeof prompt !== "string" || !prompt) {
+    throw new AgentError("create_project_draft job requires a string `prompt`");
+  }
+  return generateProjectDraft(prompt);
 }
 
 // Coerces/validates the LLM's JSON into ProjectDraft — never trust a
 // free-text model's output shape enough to hand it straight to db.insert.
 function normalizeDraft(value: unknown): ProjectDraft {
   if (typeof value !== "object" || value === null) {
-    throw new ApiError(502, "Gemini draft was not a JSON object");
+    throw new AgentError("Gemini draft was not a JSON object");
   }
   const v = value as Record<string, unknown>;
   const goal = asRecord(v.goal);
   const project = asRecord(v.project);
 
   if (typeof goal.title !== "string" || typeof project.name !== "string") {
-    throw new ApiError(502, "Gemini draft is missing goal.title or project.name");
+    throw new AgentError("Gemini draft is missing goal.title or project.name");
   }
 
   const sprints = asArray(v.sprints).map((s) => {
