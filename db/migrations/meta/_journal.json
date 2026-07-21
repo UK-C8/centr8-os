@@ -1,0 +1,104 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784479294011,
+      "tag": "0000_auth_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784479319393,
+      "tag": "0001_multi_tenant_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784479370334,
+      "tag": "0002_force_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784480135628,
+      "tag": "0003_work_hierarchy",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784480142077,
+      "tag": "0004_force_rls_work_hierarchy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784481050117,
+      "tag": "0005_role_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784482863835,
+      "tag": "0006_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784482873761,
+      "tag": "0007_force_rls_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784482885209,
+      "tag": "0008_seed_default_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784483717094,
+      "tag": "0009_goal_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784483734537,
+      "tag": "0010_seed_goal_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784484656756,
+      "tag": "0011_project_health_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784484664229,
+      "tag": "0012_force_rls_project_health_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784484664609,
+      "tag": "0013_seed_project_health_permissions",
+      "breakpoints": true
+    }
+  ]
+}
