@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useOrg } from "@/lib/context/OrgContext";
 import { ProjectStatusBadge, Badge, projectStatusColor } from "@/components/ui/Badge";
 import { CardLink } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Input, Select, Field } from "@/components/ui/Input";
+import { PROJECT_STATUSES } from "@/lib/constants";
 
 type Project = {
   id: string;
@@ -20,14 +24,15 @@ type HealthSnapshot = {
 };
 
 export default function ProjectsPage() {
-  const { selectedOrgId, loading: orgLoading } = useOrg();
+  const { selectedOrgId, can, loading: orgLoading } = useOrg();
   const [projects, setProjects] = useState<Project[]>([]);
   const [milestoneCounts, setMilestoneCounts] = useState<Record<string, number>>({});
   const [health, setHealth] = useState<Record<string, HealthSnapshot>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
 
-  useEffect(() => {
+  function loadAll() {
     if (!selectedOrgId) return;
     setLoading(true);
     setError(null);
@@ -62,7 +67,9 @@ export default function ProjectsPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load projects"))
       .finally(() => setLoading(false));
-  }, [selectedOrgId]);
+  }
+
+  useEffect(loadAll, [selectedOrgId]);
 
   if (orgLoading || loading) {
     return <p className="text-body text-neutral-600">Loading projects…</p>;
@@ -78,9 +85,14 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-display font-semibold text-neutral-950">Projects</h1>
-        <span className="text-body text-neutral-600">{projects.length} total</span>
+        <div className="flex items-center gap-3">
+          <span className="text-body text-neutral-600">{projects.length} total</span>
+          {can("project", "create") && (
+            <Button onClick={() => setShowNewProject(true)}>+ New Project</Button>
+          )}
+        </div>
       </div>
 
       {projects.length === 0 ? (
@@ -122,6 +134,120 @@ export default function ProjectsPage() {
           })}
         </div>
       )}
+
+      {showNewProject && (
+        <Modal onClose={() => setShowNewProject(false)}>
+          <NewProjectForm
+            orgId={selectedOrgId}
+            onClose={() => setShowNewProject(false)}
+            onCreated={() => {
+              setShowNewProject(false);
+              loadAll();
+            }}
+          />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function NewProjectForm({
+  orgId,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState<(typeof PROJECT_STATUSES)[number]>("planning");
+  const [portfolioId, setPortfolioId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name) return;
+    setSaving(true);
+    setError(null);
+
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        org_id: orgId,
+        name,
+        status,
+        portfolio_id: portfolioId || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+      }),
+    });
+    const body = await res.json();
+    setSaving(false);
+    if (!res.ok) {
+      setError(body.error ?? "Failed to create project");
+      return;
+    }
+    onCreated();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <h2 className="text-h2 font-semibold text-neutral-950">New Project</h2>
+
+      {error && <p className="rounded-md bg-danger-100 p-3 text-body text-danger-600">{error}</p>}
+
+      <Field label="Name">
+        <Input className="w-full" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </Field>
+
+      <Field label="Status">
+        <Select
+          className="w-full"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as (typeof PROJECT_STATUSES)[number])}
+        >
+          {PROJECT_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {/* No portfolios list endpoint exists yet — same "raw id, not a
+          picker" pattern already used for task assignee elsewhere in the
+          app. Optional: projects.portfolio_id is nullable. */}
+      <Field label="Portfolio ID (optional)">
+        <Input
+          className="w-full"
+          value={portfolioId}
+          onChange={(e) => setPortfolioId(e.target.value)}
+          placeholder="Leave blank if not part of a portfolio"
+        />
+      </Field>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Start date">
+          <Input type="date" className="w-full" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </Field>
+        <Field label="End date">
+          <Input type="date" className="w-full" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </Field>
+      </div>
+
+      <div className="flex justify-end gap-3 border-t border-neutral-200 pt-4">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving || !name}>
+          {saving ? "Creating…" : "Create Project"}
+        </Button>
+      </div>
+    </form>
   );
 }

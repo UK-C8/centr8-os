@@ -36,7 +36,10 @@ export function DonutChart({ slices }: { slices: { label: string; value: number;
       return `${HEX[s.color]} ${start}deg ${end}deg`;
     });
 
-  const gradient = total === 0 ? "#e5e7eb" : stops.join(", ");
+  // DESIGN_SYSTEM.md §6: no default Tailwind palette values — the empty
+  // state used to fall back to Tailwind's gray-200 (#e5e7eb) instead of
+  // the design system's own neutral-200 token.
+  const gradient = total === 0 ? "var(--neutral-200)" : stops.join(", ");
 
   return (
     <div className="flex flex-col items-center gap-6 sm:flex-row sm:justify-center">
