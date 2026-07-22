@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   integer,
@@ -102,6 +103,13 @@ export const orgMemberships = pgTable(
       onDelete: "set null",
     }),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    // Prompt 3.3 — SCIM deprovisioning ("deactivate a user"). Kept as a
+    // nullable timestamp rather than deleting the row outright, same
+    // revoke-not-delete reasoning as api_keys.revokedAt / client_portal_
+    // access.revokedAt: the membership's history (role, team) survives a
+    // deactivation. requirePermission() below treats a deactivated
+    // membership as if it doesn't exist.
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
   },
   (table) => [
     pgPolicy("org_memberships_isolation", {
@@ -416,6 +424,12 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   // verb, same simplification "budget:update" used in Prompt 3.2).
   // "milestone" already exists above; it just gains the "approve" action.
   "portal",
+  // Prompt 3.3 — SSO/SAML config. Named "sso" (a real resourceType, action
+  // "configure") rather than the prompt's literal suggested permission
+  // name "org:configure_sso" — a resource-specific action string would
+  // break the whole point of a shared resourceType x action matrix.
+  // Same tightness/shape as "portal" and "api_key": owner/admin only.
+  "sso",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -637,6 +651,46 @@ export const clientPortalAccess = pgTable(
   },
   () => [
     pgPolicy("client_portal_access_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// --- SSO/SAML configuration (Prompt 3.3) ---
+
+export const ssoProviderEnum = pgEnum("sso_provider", ["saml"]);
+
+// One row per org (unique orgId). Storing IdP metadata even though the
+// login flow itself can't go live yet — see the "requires Supabase Team
+// plan" note on `enabled` below — so an admin's setup work isn't lost and
+// the moment the plan is upgraded, wiring the flow is a small change, not
+// a data-model change too.
+export const ssoConfigurations = pgTable(
+  "sso_configurations",
+  {
+    orgId: uuid("org_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    provider: ssoProviderEnum("provider").notNull().default("saml"),
+    idpEntityId: text("idp_entity_id"),
+    idpSsoUrl: text("idp_sso_url"),
+    idpCertificate: text("idp_certificate"),
+    // Always false in this codebase today — Supabase Auth's SAML SSO is a
+    // Team-plan feature ($599/mo), not available on the Free/Pro tiers
+    // this project runs on (CLAUDE.md §2: no paid infra without a flagged
+    // phase-gate decision). The config UI writes everything above but
+    // refuses to set this true; flip it only after confirming the
+    // Supabase project has actually been upgraded, then wire the real
+    // Supabase `auth.sso` provider registration on top of this row.
+    enabled: boolean("enabled").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [
+    pgPolicy("sso_configurations_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

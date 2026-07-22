@@ -22,7 +22,8 @@ export type ResourceType =
   | "budget"
   | "capacity"
   | "api_key"
-  | "portal";
+  | "portal"
+  | "sso";
 
 export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "configure";
 
@@ -38,7 +39,13 @@ export async function requirePermission(
   const [membership] = await db
     .select({ role: orgMemberships.role })
     .from(orgMemberships)
-    .where(and(eq(orgMemberships.userId, userId), eq(orgMemberships.orgId, orgId)));
+    .where(
+      and(
+        eq(orgMemberships.userId, userId),
+        eq(orgMemberships.orgId, orgId),
+        isNull(orgMemberships.deactivatedAt),
+      ),
+    );
 
   if (!membership) {
     throw new ApiError(403, "Not a member of this organization");

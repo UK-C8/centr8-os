@@ -155,6 +155,34 @@
       "when": 1784672799766,
       "tag": "0021_seed_portal_and_milestone_approve_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784678292329,
+      "tag": "0022_magical_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784678307123,
+      "tag": "0023_force_rls_sso_configurations",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784678307501,
+      "tag": "0024_exclude_deactivated_from_user_org_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784678307880,
+      "tag": "0025_seed_sso_permissions",
+      "breakpoints": true
     }
   ]
 }

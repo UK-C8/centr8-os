@@ -128,6 +128,69 @@ Every feature implemented must satisfy, at minimum:
 
 ---
 
+## 11a. Scope Expansion — HR, CRM, and Communication Pillars (Added Post-V1)
+
+Centr8 OS's scope has expanded beyond the original BRD/PRD's "AI-native project management" positioning. The product is now a multi-pillar business OS with five pillars:
+
+1. **Project Management** (original scope — Goals→Portfolios→Projects→Milestones→Sprints→Tasks)
+2. **HR Management** (new — modeled on Zoho People's feature set)
+3. **CRM** (new — modeled on Zoho CRM's standard modules)
+4. **Communication** (new — Messenger, Mail, Calls, Video Conferencing)
+5. **AI Assistant** (cuts across all four pillars above, not a separate product)
+
+This is a deliberate, confirmed scope change from the original BRD (which listed HR/payroll and full CRM as out-of-scope integrations-only). Anyone picking up this codebase later should treat this section as authoritative over the original BRD Section 4.2 where they conflict.
+
+### Build vs. Integrate Decision
+
+- **HR Management** and **CRM**: build natively, following the same schema/RLS/RBAC patterns already established for the Project Management pillar (org_id-scoped tables, `can()` permission gating, DESIGN_SYSTEM.md tokens).
+- **Communication** (Messenger, Mail, Calls, Video Conferencing): integrate via connectors/plugins, do NOT rebuild natively. These are individually massive products (Slack, Gmail, Zoom-scale) and rebuilding them natively is out of scope even long-term. Use the plugin/integration architecture from Prompt 3.4 as the mechanism — Centr8 OS surfaces these tools inside its UI via connectors, it does not replace them.
+
+### Sidebar / Navigation Structure (Locked)
+
+```
+PROJECT MANAGEMENT
+  Dashboard, Projects, Sprints, Tasks
+
+HR MANAGEMENT
+  Employee Directory, Onboarding, Attendance & Time Tracking,
+  Leave Management, Payroll & Compensation, Performance Reviews & OKRs,
+  Recruitment / Hiring, HR Cases & Helpdesk, Learning & Training (LMS),
+  Employee Engagement / Surveys
+
+COMMUNICATION (integrated, not native)
+  Messenger, Mail, Calls, Video Conferencing
+
+CRM
+  Leads, Contacts, Accounts, Deals / Pipeline, Activities,
+  Sales Forecasts, Campaigns
+
+RESOURCES
+  Capacity Planning, Budgets
+
+AI ASSISTANT (dedicated cross-module screens)
+  AI Draft, Health Monitoring, Sprint Plans, Ask AI, Documents, Recommendations
+
+INSIGHTS
+  Executive Dashboard
+
+ADMINISTRATION
+  Members & Roles, SSO & Security, Automations, API Keys, Audit Log, Integrations
+```
+
+### AI Placement Rule
+
+AI is not siloed to the AI Assistant section alone. The five composable agents (Planner, Monitor, Analyst, Writer, Communicator — CLAUDE.md §5) are reusable across all pillars:
+
+- **HR Management**: AI-drafted job postings (Writer), AI-summarized performance reviews (Analyst), AI-flagged attendance anomalies (Monitor)
+- **CRM**: AI lead scoring (Analyst), AI-drafted follow-up emails (Writer), AI-generated deal-risk summaries (Monitor)
+- **Project Management**: already implemented (Health Monitoring, AI Draft)
+
+Every contextual AI touchpoint inside a module (not a dedicated AI Assistant screen) must still follow the provisional-results banner pattern and correct autonomy tier per CLAUDE.md §4 — embedding AI into more modules does not relax the approval-gating rules.
+
+### Current Status (flag for future sessions)
+
+As of this scope expansion, HR Management, CRM, and Communication pillars are **planning-stage only — no schema, no API routes, no UI built yet**. Only the original Project Management pillar (plus Resources, AI Assistant's PM-specific features, and Administration basics) has real implementation. Treat any reference to HR/CRM/Communication features as unbuilt until confirmed otherwise in a status check, same discipline applied to the original PM-only phases.
+
 ## 11. Phase Gate Rule
 
 Do not start a phase until the prior phase's acceptance criteria pass. Confirm completion with Urvil before moving forward. If a paid-tier substitution becomes unavoidable, flag it explicitly rather than silently switching — same rule as Recur8's Phase 3 gate with Chintan.

@@ -327,6 +327,191 @@ Acceptance criteria: a Tier 1 action issued by voice still requires approval.
 
 ---
 
+## PHASE 3.6 — Sidebar Restructure (Do This First, Before Any New Pillar)
+
+### Prompt 3.6 — Restructure Sidebar for Multi-Pillar Navigation
+
+```
+Restructure the app's sidebar to the locked navigation structure in CLAUDE.md §11a, grouping existing and future items under titled sections with sub-items:
+
+PROJECT MANAGEMENT — Dashboard, Projects, Sprints, Tasks
+HR MANAGEMENT — Employee Directory, Onboarding, Attendance & Time Tracking, Leave Management, Payroll & Compensation, Performance Reviews & OKRs, Recruitment / Hiring, HR Cases & Helpdesk, Learning & Training (LMS), Employee Engagement / Surveys
+COMMUNICATION — Messenger, Mail, Calls, Video Conferencing
+CRM — Leads, Contacts, Accounts, Deals / Pipeline, Activities, Sales Forecasts, Campaigns
+RESOURCES — Capacity Planning, Budgets
+AI ASSISTANT — AI Draft, Health Monitoring, Sprint Plans, Ask AI, Documents, Recommendations
+INSIGHTS — Executive Dashboard
+ADMINISTRATION — Members & Roles, SSO & Security, Automations, API Keys, Audit Log, Integrations
+
+Tasks:
+1. Add non-clickable section header labels above each group (small caps, muted color per DESIGN_SYSTEM.md's --text-caption token).
+2. Existing items (Dashboard, Projects, Sprints, Tasks, Executive, AI Draft, Health) move into their correct new sections — do not duplicate or rebuild them, just reposition in the nav.
+3. Items for modules not yet built (everything under HR MANAGEMENT, COMMUNICATION, CRM, and unbuilt AI Assistant items like Sprint Plans/Ask AI/Documents/Recommendations) should render as visible but disabled/grayed-out nav links with a small "Coming soon" tag — do not link to 404 pages.
+4. Gate section visibility by role where it already makes sense (e.g. ADMINISTRATION section only visible to admin role, per existing can() pattern) — items within HR MANAGEMENT/CRM will get their own granular permission gating once those modules are actually built in later phases.
+
+This is a navigation-only change — no new database tables, no new API routes. Confirm the existing screens (Dashboard, Projects, Sprints, Tasks, Executive, AI Draft, Health) still work correctly after being repositioned in the new structure.
+```
+
+---
+
+## PHASE 5 — HR Management (New Pillar, Native Build)
+
+Build natively, following the same org_id-scoped RLS and `can()` permission pattern as Project Management. Do not start this phase until Prompt 3.6 (sidebar restructure) is done.
+
+### Prompt 5.1 — Employee Directory & Onboarding
+
+```
+Implement the Employee Directory and Onboarding modules (HR Management pillar, CLAUDE.md §11a).
+
+Tables:
+- employees (id, org_id, user_id nullable [links to org_memberships if they also have app login], full_name, job_title, department_id, team_id, manager_id nullable, employment_status ['active'|'onboarding'|'terminated'], start_date, end_date nullable)
+- onboarding_workflows (id, org_id, employee_id, template_id nullable, steps jsonb, status ['not_started'|'in_progress'|'complete'])
+
+Requirements:
+- org_id-scoped RLS, same pattern as existing tables.
+- Gate mutations through can() — add employee:create, employee:update, employee:terminate permission types.
+- Build a directory list/detail UI following DESIGN_SYSTEM.md tokens, consistent with the existing Projects list/detail pattern.
+- Onboarding: a simple checklist-style workflow per new employee, viewable/editable by HR admin role and the employee's manager.
+
+Acceptance criteria: creating an employee record and running them through an onboarding checklist works end-to-end, correctly scoped and gated per role.
+```
+
+### Prompt 5.2 — Attendance, Time Tracking & Leave Management
+
+```
+Implement Attendance & Time Tracking and Leave Management.
+
+Tables:
+- attendance_records (id, org_id, employee_id, date, check_in, check_out, status ['present'|'absent'|'half_day'|'remote'])
+- leave_policies (id, org_id, name, days_per_year, accrual_rule jsonb)
+- leave_requests (id, org_id, employee_id, policy_id, start_date, end_date, status ['pending'|'approved'|'rejected'], approved_by nullable)
+
+Requirements:
+- Same RLS/can() pattern. New permission types: attendance:record, leave:request, leave:approve.
+- Employees can self-check-in/out and submit leave requests; managers approve/reject (Tier 1-style human approval, no AI involved here).
+- Build a simple calendar or list view for team leave visibility.
+
+Acceptance criteria: an employee can submit a leave request, a manager can approve/reject it, and the leave balance correctly reflects approved time off.
+```
+
+### Prompt 5.3 — Payroll & Compensation
+
+```
+Implement basic Payroll & Compensation tracking — record-keeping and structure, not automated tax/statutory payroll processing (that requires region-specific compliance logic out of scope for now, flag this limitation explicitly in the UI).
+
+Tables:
+- compensation_records (id, org_id, employee_id, base_salary, currency, effective_date, bonus jsonb nullable, benefits jsonb nullable)
+
+Requirements:
+- Highly sensitive data — restrict visibility strictly to HR admin role and the employee themselves (not even their manager, unless explicitly granted). Add a compensation:view_sensitive permission type separate from general employee:view.
+- Do not build tax withholding, statutory compliance calculations, or bank disbursement — this is scope-limited to structured record-keeping only. Add a visible note in the UI: "Payroll processing and tax compliance are out of scope — this module tracks compensation records only."
+
+Acceptance criteria: compensation data is viewable only by HR admin and the employee themselves; a manager without explicit grant cannot see it, verified with a test.
+```
+
+### Prompt 5.4 — Performance Reviews, Recruitment, HR Helpdesk, LMS, Engagement
+
+```
+Implement the remaining HR Management modules: Performance Reviews & OKRs, Recruitment/Hiring, HR Cases & Helpdesk, Learning & Training, Employee Engagement/Surveys.
+
+Tables (one set per module, all org_id-scoped RLS):
+- performance_reviews (employee_id, reviewer_id, period, ratings jsonb, comments, status)
+- okrs (employee_id or team_id, objective, key_results jsonb, period)
+- job_postings (title, department_id, status ['draft'|'open'|'closed'], description)
+- candidates (job_posting_id, name, email, stage ['applied'|'interview'|'offer'|'hired'|'rejected'])
+- hr_cases (employee_id, category, description, status, assigned_to)
+- training_courses (title, content jsonb, required_for_role nullable)
+- training_completions (employee_id, course_id, completed_at)
+- engagement_surveys (title, questions jsonb) / survey_responses (survey_id, employee_id, answers jsonb, anonymous boolean)
+
+Requirements:
+- Standard RLS/can() pattern throughout, new permission types per module as needed.
+- This is a large prompt — build incrementally, confirm each module's basic CRUD works before moving to the next.
+- No AI dependency in this prompt — plain CRUD and workflows only. AI-assisted job posting drafts and review summarization are separate follow-up prompts once the Gemini/Groq provider decision is finalized.
+
+Acceptance criteria: each module has working create/list/detail screens, correctly scoped and permission-gated.
+```
+
+---
+
+## PHASE 6 — CRM (New Pillar, Native Build)
+
+### Prompt 6.1 — Leads, Contacts & Accounts
+
+```
+Implement the core CRM data model: Leads, Contacts, Accounts (modeled on Zoho CRM's standard modules, per CLAUDE.md §11a).
+
+Tables:
+- leads (id, org_id, name, company, email, phone, source, status ['new'|'contacted'|'qualified'|'unqualified'|'converted'], owner_id)
+- accounts (id, org_id, name, industry, website, owner_id)
+- contacts (id, org_id, account_id nullable, name, email, phone, title, owner_id)
+
+Requirements:
+- org_id-scoped RLS. New permission types: lead:create/update, contact:create/update, account:create/update.
+- A lead can be "converted" into an account + contact (+ later, a deal) — build this as an explicit action, not automatic.
+- Build list/detail UI consistent with existing DESIGN_SYSTEM.md patterns.
+
+Acceptance criteria: a lead can be created, qualified, and converted into an account/contact pair, correctly scoped and gated.
+```
+
+### Prompt 6.2 — Deals, Pipeline & Activities
+
+```
+Implement Deals/Pipeline and Activities.
+
+Tables:
+- deals (id, org_id, account_id, contact_id nullable, name, value, currency, stage ['prospecting'|'proposal'|'negotiation'|'won'|'lost'], owner_id, expected_close_date)
+- activities (id, org_id, related_type ['lead'|'contact'|'account'|'deal'], related_id, type ['call'|'meeting'|'task'|'note'], notes, due_date nullable, completed boolean)
+
+Requirements:
+- Same RLS/can() pattern. New permission types: deal:create/update, activity:create/update.
+- Build a kanban-style pipeline view for deals by stage, reusing the SprintBoard drag-and-drop component pattern from the PM pillar if practical, rather than building a new one from scratch.
+- Activities attach to any CRM entity (lead/contact/account/deal) as a simple timeline.
+
+Acceptance criteria: a deal can be dragged across pipeline stages, persisting via API; an activity logged against a deal shows correctly in its timeline.
+```
+
+### Prompt 6.3 — Sales Forecasts & Campaigns
+
+```
+Implement Sales Forecasts and Campaigns.
+
+Tables:
+- forecasts (id, org_id, period, target_value, computed from deals in that period's expected_close_date and stage)
+- campaigns (id, org_id, name, type, status, start_date, end_date, linked_leads jsonb or a join table)
+
+Requirements:
+- Forecasts are a computed rollup view (no AI needed) — total pipeline value by stage/period, not a prediction. (AI-based forecasting is a Phase 4 knowledge-graph-era feature per the original roadmap, not this prompt.)
+- Campaigns track which leads came from which campaign for basic ROI visibility.
+- Same RLS/can() pattern throughout.
+
+Acceptance criteria: the forecast view correctly sums deal values by stage and period; a campaign shows the leads attributed to it.
+```
+
+---
+
+## PHASE 7 — Communication (Integrated, Not Native)
+
+### Prompt 7.1 — Integration/Connector Framework
+
+```
+Build the integration/connector framework that the Communication pillar (Messenger, Mail, Calls, Video Conferencing) will plug into — per CLAUDE.md §11a, these are integrated via connectors, not rebuilt natively.
+
+Tasks:
+1. An integrations table (org_id, provider ['slack'|'gmail'|'zoom'|etc.], config jsonb, connected_by, connected_at, status).
+2. A simple OAuth connection flow for at least one provider end-to-end (pick the most valuable first — likely Gmail or Slack) to prove the pattern before adding more.
+3. An Integrations screen under ADMINISTRATION where an org admin can connect/disconnect providers.
+4. Surface connected communication tools contextually where relevant (e.g. a "Send via Slack" button on a client update, a "Send via Gmail" option on a generated document) rather than building a full native inbox/chat UI.
+
+Requirements:
+- Do not attempt to rebuild Slack/Gmail/Zoom's actual interfaces — this phase is about connecting to them via API/OAuth, surfacing minimal relevant actions inside Centr8 OS, not replicating their UIs.
+- Standard RLS/can() pattern for the integrations table itself (org:configure_integrations permission).
+
+Acceptance criteria: an org admin can connect at least one real provider via OAuth, and a message/email can be sent through it from within Centr8 OS as a proof of concept.
+```
+
+---
+
 ## PHASE 4 — Scale & Differentiation
 
 ### Prompt 4.1 — Knowledge Graph Maturity
