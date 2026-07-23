@@ -5,6 +5,19 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useOrg } from "@/lib/context/OrgContext";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 // icons reused across items that share a shape; "" falls back to a generic dot.
 const ICON = {
@@ -38,7 +51,7 @@ type NavSection = { title: string; icon: string; items: NavItem[]; adminOnly?: b
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: "PROJECT MANAGEMENT",
+    title: "Project Management",
     icon: ICON.checklist,
     items: [
       { href: "/dashboard", label: "Dashboard", icon: ICON.dashboard },
@@ -48,7 +61,7 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "HR MANAGEMENT",
+    title: "HR Management",
     icon: ICON.users,
     items: [
       { href: "/hr/dashboard", label: "Dashboard", icon: ICON.dashboard },
@@ -61,10 +74,11 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/hr/cases", label: "HR Cases & Helpdesk", icon: ICON.chat },
       { href: "/hr/learning", label: "Learning & Training (LMS)", icon: ICON.doc },
       { href: "/hr/engagement", label: "Employee Engagement / Surveys", icon: ICON.heart },
+      { href: "/hr/holidays", label: "Holidays", icon: ICON.doc },
     ],
   },
   {
-    title: "COMMUNICATION",
+    title: "Communication",
     icon: ICON.chat,
     items: [
       { href: "/comms/messenger", label: "Messenger", icon: ICON.chat, comingSoon: true },
@@ -77,17 +91,17 @@ const NAV_SECTIONS: NavSection[] = [
     title: "CRM",
     icon: ICON.wallet,
     items: [
-      { href: "/crm/leads", label: "Leads", icon: ICON.target, comingSoon: true },
-      { href: "/crm/contacts", label: "Contacts", icon: ICON.users, comingSoon: true },
-      { href: "/crm/accounts", label: "Accounts", icon: ICON.folder, comingSoon: true },
-      { href: "/crm/deals", label: "Deals / Pipeline", icon: ICON.wallet, comingSoon: true },
+      { href: "/crm/leads", label: "Leads", icon: ICON.target },
+      { href: "/crm/contacts", label: "Contacts", icon: ICON.users },
+      { href: "/crm/accounts", label: "Accounts", icon: ICON.folder },
+      { href: "/crm/deals", label: "Deals / Pipeline", icon: ICON.wallet },
       { href: "/crm/activities", label: "Activities", icon: ICON.checklist, comingSoon: true },
       { href: "/crm/forecasts", label: "Sales Forecasts", icon: ICON.gauge, comingSoon: true },
       { href: "/crm/campaigns", label: "Campaigns", icon: ICON.sparkle, comingSoon: true },
     ],
   },
   {
-    title: "RESOURCES",
+    title: "Resources",
     icon: ICON.gauge,
     items: [
       { href: "/sprints", label: "Capacity Planning", icon: ICON.gauge },
@@ -95,7 +109,7 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "AI ASSISTANT",
+    title: "AI Assistant",
     icon: ICON.sparkle,
     items: [
       { href: "/ai/create-project", label: "AI Draft", icon: ICON.bolt },
@@ -107,12 +121,12 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "INSIGHTS",
+    title: "Insights",
     icon: ICON.bars,
     items: [{ href: "/executive", label: "Executive Dashboard", icon: ICON.bars }],
   },
   {
-    title: "ADMINISTRATION",
+    title: "Administration",
     icon: ICON.shield,
     adminOnly: true,
     items: [
@@ -126,17 +140,111 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+// Closes the mobile sidebar sheet on route change — SidebarProvider doesn't
+// do this itself, and useSidebar() only works inside SidebarProvider, so
+// this has to live below it as its own component rather than in AppShell.
+function CloseMobileNavOnRouteChange() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { orgs, selectedOrgId, setSelectedOrgId, loading, can } = useOrg();
-  const isAdmin = can("sso", "configure");
+  const { setOpenMobile } = useSidebar();
+  useEffect(() => {
+    setOpenMobile(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+  return null;
+}
+
+function AppSidebar({ isAdmin }: { isAdmin: boolean }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(NAV_SECTIONS.map((s) => [s.title, true])),
   );
+
+  return (
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader className="h-14 flex-row items-center gap-2 border-b border-neutral-300 px-4">
+        <div className="flex h-7 w-7 items-center justify-center rounded-sm bg-primary-600 text-caption font-semibold text-neutral-50">
+          C8
+        </div>
+        <span className="text-h3 font-semibold text-neutral-950">Centr8 OS</span>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-4 p-3 font-heading">
+        {NAV_SECTIONS.filter((section) => !section.adminOnly || isAdmin).map((section) => (
+          <SidebarGroup key={section.title} className="space-y-0.5 p-0">
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => ({ ...c, [section.title]: !c[section.title] }))}
+              className="flex w-full items-center gap-2 px-3 pb-1 font-heading text-[13px] font-semibold tracking-wide text-neutral-500 hover:text-neutral-700"
+            >
+              <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={section.icon} />
+              </svg>
+              <span className="flex-1 text-left">{section.title}</span>
+              <svg
+                className={`h-3 w-3 shrink-0 transition-transform ${collapsed[section.title] ? "-rotate-90" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {!collapsed[section.title] && (
+              <SidebarMenu>
+                {section.items.map((item, i) => {
+                  if (item.comingSoon) {
+                    return (
+                      <SidebarMenuItem key={`${item.href}-${i}`}>
+                        <div className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium text-neutral-400">
+                          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                          </svg>
+                          <span className="flex-1">{item.label}</span>
+                          <span className="shrink-0 whitespace-nowrap rounded-full bg-neutral-200 px-1.5 py-0.5 text-caption text-neutral-500">
+                            Soon
+                          </span>
+                        </div>
+                      </SidebarMenuItem>
+                    );
+                  }
+                  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                  return (
+                    <SidebarMenuItem key={`${item.href}-${i}`}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active}
+                        className={`h-auto gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium ${
+                          active
+                            ? "bg-primary-100 text-primary-700 hover:bg-primary-100 hover:text-primary-700 data-active:bg-primary-100 data-active:text-primary-700"
+                            : "text-neutral-600 hover:bg-neutral-200 hover:text-neutral-600"
+                        }`}
+                      >
+                        <Link href={item.href}>
+                          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                          </svg>
+                          {item.label}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            )}
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+    </Sidebar>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { orgs, selectedOrgId, setSelectedOrgId, loading, can } = useOrg();
+  const isAdmin = can("sso", "configure");
   const [email, setEmail] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,11 +261,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  // Close the drawer on route change so it doesn't stay open after nav.
-  useEffect(() => {
-    setNavOpen(false);
-  }, [pathname]);
-
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -165,105 +268,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
-  const navContent = (
-    <>
-      <div className="flex h-14 items-center gap-2 border-b border-neutral-300 px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-sm bg-primary-600 text-caption font-semibold text-neutral-50">
-          C8
-        </div>
-        <span className="text-h3 font-semibold text-neutral-950">Centr8 OS</span>
-      </div>
-
-      <nav className="flex-1 space-y-4 overflow-y-auto p-3 font-heading">
-        {NAV_SECTIONS.filter((section) => !section.adminOnly || isAdmin).map((section) => (
-          <div key={section.title} className="space-y-0.5">
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => ({ ...c, [section.title]: !c[section.title] }))}
-              className="flex w-full items-center gap-2 px-3 pb-1 font-heading text-[13px] font-semibold uppercase tracking-wide text-neutral-500 hover:text-neutral-700"
-            >
-              <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d={section.icon} />
-              </svg>
-              <span className="flex-1 text-left">{section.title}</span>
-              <svg
-                className={`h-3 w-3 shrink-0 transition-transform ${collapsed[section.title] ? "-rotate-90" : ""}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {!collapsed[section.title] && section.items.map((item, i) => {
-              if (item.comingSoon) {
-                return (
-                  <div
-                    key={`${item.href}-${i}`}
-                    className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium text-neutral-400"
-                  >
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                    </svg>
-                    <span className="flex-1">{item.label}</span>
-                    <span className="shrink-0 whitespace-nowrap rounded-full bg-neutral-200 px-1.5 py-0.5 text-caption text-neutral-500">
-                      Soon
-                    </span>
-                  </div>
-                );
-              }
-              const active = pathname === item.href || pathname.startsWith(item.href + "/");
-              return (
-                <Link
-                  key={`${item.href}-${i}`}
-                  href={item.href}
-                  className={`flex items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium transition-colors ${
-                    active ? "bg-primary-100 text-primary-700" : "text-neutral-600 hover:bg-neutral-200"
-                  }`}
-                >
-                  <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                  </svg>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
-    </>
-  );
-
   return (
-    <div className="flex min-h-screen bg-neutral-100">
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-neutral-300 bg-neutral-50 md:flex">
-        {navContent}
-      </aside>
+    <SidebarProvider className="min-h-screen bg-neutral-100">
+      <CloseMobileNavOnRouteChange />
+      <AppSidebar isAdmin={isAdmin} />
 
-      {/* Mobile drawer */}
-      {navOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-neutral-950/40" onClick={() => setNavOpen(false)} />
-          <aside className="relative flex h-full w-64 max-w-[80vw] flex-col bg-neutral-50 shadow-lg">{navContent}</aside>
-        </div>
-      )}
+      <SidebarInset className="min-w-0 bg-neutral-100">
+        <header className="flex h-14 items-center gap-2 border-b border-neutral-300 bg-neutral-50 px-3 sm:px-6">
+          <SidebarTrigger className="md:hidden" />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between gap-2 border-b border-neutral-300 bg-neutral-50 px-3 sm:px-6">
-          <button
-            onClick={() => setNavOpen(true)}
-            aria-label="Open menu"
-            className="rounded-sm p-2 text-neutral-600 hover:bg-neutral-200 md:hidden"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          <div className="relative hidden max-w-sm flex-1 md:block">
+            <svg
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
             </svg>
-          </button>
-          <div className="hidden md:block" />
+            <input
+              type="search"
+              placeholder="Search"
+              disabled
+              title="Search is not wired up yet"
+              className="w-full rounded-sm border border-neutral-300 bg-neutral-50 py-1.5 pl-9 pr-3 text-body text-neutral-950 placeholder:text-neutral-400 focus:outline focus:outline-2 focus:outline-primary-600 disabled:cursor-not-allowed"
+            />
+          </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
             {loading ? (
               <span className="hidden text-body text-neutral-600 sm:inline">Loading orgs…</span>
             ) : orgs.length === 0 ? (
@@ -282,16 +315,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </select>
             )}
 
+            <button
+              type="button"
+              disabled
+              title="Notifications aren't wired up yet"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-neutral-500 hover:bg-neutral-200 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-4-5.66V5a2 2 0 10-4 0v.34A6 6 0 006 11v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+            </button>
+
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-neutral-200"
               >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-600 text-caption font-medium text-neutral-50">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-caption font-medium text-neutral-50">
                   {(email ?? "?").slice(0, 1).toUpperCase()}
                 </div>
-                <span className="hidden max-w-[10rem] truncate text-body-medium font-medium text-neutral-800 sm:inline">
-                  {email ?? "Account"}
+                <span className="hidden flex-col items-start sm:flex">
+                  <span className="max-w-[10rem] truncate text-body-medium font-medium leading-tight text-neutral-950">
+                    {email ?? "Account"}
+                  </span>
+                  <span className="text-caption capitalize leading-tight text-neutral-500">
+                    {orgs.find((o) => o.id === selectedOrgId)?.role ?? "—"}
+                  </span>
                 </span>
                 <svg className="hidden h-3.5 w-3.5 text-neutral-600 sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -320,7 +373,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8">{children}</main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

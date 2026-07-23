@@ -470,6 +470,23 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   "hr_case",
   "training",
   "engagement",
+  // Company Holidays list (org-wide, one-off dated entries — no
+  // recurrence logic). Same HR-admin-only-data-entry default as the rest
+  // of HR Management.
+  "holiday",
+  // Phase 6 (CRM, CLAUDE.md §11a) — Leads, Contacts, Accounts. Unlike HR
+  // Management, CRM data is a shared sales-team working set, not
+  // admin-restricted: owner/admin/member all get full CRUD (same "things
+  // people do day to day" tier as task/task_dependency in
+  // 0008_seed_default_permissions.sql), viewer stays read-only.
+  "lead",
+  "contact",
+  "account",
+  // Prompt 6.2 — Deals/Pipeline & Activities. Same "shared sales-team
+  // working set" tier as lead/contact/account: owner/admin/member full
+  // CRUD, viewer read-only.
+  "deal",
+  "activity",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -760,6 +777,11 @@ export const ssoConfigurations = pgTable(
 
 
 // --- HR: Employee Directory & Onboarding (Prompt 5.1, CLAUDE.md §11a) ---
+
+export const leadStatusEnum = pgEnum("lead_status", ["new", "contacted", "qualified", "unqualified", "converted"]);
+export const dealStageEnum = pgEnum("deal_stage", ["prospecting", "proposal", "negotiation", "won", "lost"]);
+export const activityRelatedTypeEnum = pgEnum("activity_related_type", ["lead", "contact", "account", "deal"]);
+export const activityTypeEnum = pgEnum("activity_type", ["call", "meeting", "task", "note"]);
 
 export const employmentStatusEnum = pgEnum("employment_status", ["active", "onboarding", "terminated"]);
 export const onboardingStatusEnum = pgEnum("onboarding_status", ["not_started", "in_progress", "complete"]);
@@ -1195,6 +1217,164 @@ export const surveyResponses = pgTable(
   },
   () => [
     pgPolicy("survey_responses_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const holidays = pgTable(
+  "holidays",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    name: text("name").notNull(),
+  },
+  () => [
+    pgPolicy("holidays_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// Phase 6 (CRM, CLAUDE.md §11a) — Leads, Contacts & Accounts, modeled on
+// Zoho CRM's standard modules. ownerId is a bare uuid with no FK, same as
+// goals.ownerId/tasks.assigneeId — Neon has no local `auth.users` table to
+// reference. accounts is defined first since contacts/leads reference it.
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    industry: text("industry"),
+    website: text("website"),
+    ownerId: uuid("owner_id"),
+  },
+  () => [
+    pgPolicy("accounts_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    title: text("title"),
+    ownerId: uuid("owner_id"),
+  },
+  () => [
+    pgPolicy("contacts_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// convertedAccountId/convertedContactId are set by the explicit "convert"
+// action (lib/api/leadConversion.ts) — never automatic — and exist purely
+// for traceability (so a converted lead still shows what it became).
+export const leads = pgTable(
+  "leads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    company: text("company"),
+    email: text("email"),
+    phone: text("phone"),
+    source: text("source"),
+    status: leadStatusEnum("status").notNull().default("new"),
+    ownerId: uuid("owner_id"),
+    convertedAccountId: uuid("converted_account_id").references(() => accounts.id, { onDelete: "set null" }),
+    convertedContactId: uuid("converted_contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  },
+  () => [
+    pgPolicy("leads_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const deals = pgTable(
+  "deals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    value: numeric("value", { precision: 12, scale: 2, mode: "number" }),
+    currency: text("currency").notNull().default("USD"),
+    stage: dealStageEnum("stage").notNull().default("prospecting"),
+    ownerId: uuid("owner_id"),
+    expectedCloseDate: date("expected_close_date"),
+  },
+  () => [
+    pgPolicy("deals_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// relatedId is a bare uuid with no FK — it polymorphically points at
+// whichever table relatedType names (lead/contact/account/deal), and
+// Postgres FKs can't target more than one table. Isolation still holds
+// because every write goes through withOrgContext/requirePermission with
+// org_id supplied explicitly, same as every other org-scoped table.
+export const activities = pgTable(
+  "activities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    relatedType: activityRelatedTypeEnum("related_type").notNull(),
+    relatedId: uuid("related_id").notNull(),
+    type: activityTypeEnum("type").notNull(),
+    notes: text("notes"),
+    dueDate: date("due_date"),
+    completed: boolean("completed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [
+    pgPolicy("activities_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

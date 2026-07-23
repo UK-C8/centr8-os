@@ -23,10 +23,18 @@ const buttonVariants = cva(
         secondary:
           "bg-neutral-50 border border-neutral-300 text-neutral-950 hover:bg-neutral-100 disabled:text-neutral-400",
         danger: "bg-danger-600 text-neutral-50 hover:bg-danger-600/90 disabled:bg-danger-100 disabled:text-neutral-400",
+        // Used by the shadcn Sidebar/Sheet primitives (toggle + close
+        // buttons) — no border/fill, just a hover state.
+        ghost: "text-neutral-600 hover:bg-neutral-200 disabled:text-neutral-400",
+      },
+      size: {
+        default: "",
+        "icon-sm": "!h-7 !w-7 !p-0",
       },
     },
     defaultVariants: {
       variant: "primary",
+      size: "default",
     },
   },
 );
@@ -41,11 +49,11 @@ type ButtonAsLink = Omit<LinkProps, "className"> &
   VariantProps<typeof buttonVariants> & { className?: string; children?: React.ReactNode };
 
 export function Button(props: ButtonAsButton | ButtonAsLink) {
-  const { variant, className, ...rest } = props;
-  const classes = cn(buttonVariants({ variant }), className);
+  const { variant, size, className, ...rest } = props;
+  const classes = cn(buttonVariants({ variant, size }), className);
 
   if ("href" in rest && rest.href !== undefined) {
-    const { href, ...linkRest } = rest as Omit<ButtonAsLink, "variant" | "className">;
+    const { href, ...linkRest } = rest as Omit<ButtonAsLink, "variant" | "size" | "className">;
     return (
       <Link href={href} className={classes} {...linkRest}>
         {props.children}
@@ -53,7 +61,7 @@ export function Button(props: ButtonAsButton | ButtonAsLink) {
     );
   }
 
-  const { asChild, ...buttonRest } = rest as Omit<ButtonAsButton, "variant" | "className">;
+  const { asChild, ...buttonRest } = rest as Omit<ButtonAsButton, "variant" | "size" | "className">;
   const Comp = asChild ? Slot.Root : "button";
   return <Comp data-slot="button" className={classes} {...buttonRest} />;
 }

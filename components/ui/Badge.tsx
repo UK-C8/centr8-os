@@ -74,6 +74,13 @@ const EMPLOYMENT_STATUS_COLOR: Record<string, keyof typeof COLOR_CLASSES> = {
   onboarding: "info",
   terminated: "neutral",
 };
+const LEAD_STATUS_COLOR: Record<string, keyof typeof COLOR_CLASSES> = {
+  new: "neutral",
+  contacted: "info",
+  qualified: "warning",
+  unqualified: "neutral",
+  converted: "success",
+};
 
 export function ProjectStatusBadge({ status }: { status: string }) {
   return <Badge color={PROJECT_STATUS_COLOR[status] ?? "neutral"}>{humanize(status)}</Badge>;
@@ -89,6 +96,9 @@ export function TaskStatusBadge({ status }: { status: string }) {
 }
 export function TaskPriorityBadge({ priority }: { priority: string }) {
   return <Badge color={TASK_PRIORITY_COLOR[priority] ?? "neutral"}>{humanize(priority)}</Badge>;
+}
+export function LeadStatusBadge({ status }: { status: string }) {
+  return <Badge color={LEAD_STATUS_COLOR[status] ?? "neutral"}>{humanize(status)}</Badge>;
 }
 
 // Exposed so cards can accent themselves (colored left border) with the

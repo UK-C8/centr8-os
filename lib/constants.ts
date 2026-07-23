@@ -41,3 +41,13 @@ export const PERFORMANCE_REVIEW_STATUSES = ["draft", "submitted", "completed"] a
 export const JOB_POSTING_STATUSES = ["draft", "open", "closed"] as const;
 export const CANDIDATE_STAGES = ["applied", "interview", "offer", "hired", "rejected"] as const;
 export const HR_CASE_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+export const LEAD_STATUSES = ["new", "contacted", "qualified", "unqualified", "converted"] as const;
+export const DEAL_STAGES = ["prospecting", "proposal", "negotiation", "won", "lost"] as const;
+export const DEAL_STAGE_LABELS: Record<(typeof DEAL_STAGES)[number], string> = {
+  prospecting: "Prospecting",
+  proposal: "Proposal",
+  negotiation: "Negotiation",
+  won: "Won",
+  lost: "Lost",
+};
+export const ACTIVITY_TYPES = ["call", "meeting", "task", "note"] as const;

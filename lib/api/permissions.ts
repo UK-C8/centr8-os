@@ -32,7 +32,13 @@ export type ResourceType =
   | "recruitment"
   | "hr_case"
   | "training"
-  | "engagement";
+  | "engagement"
+  | "holiday"
+  | "lead"
+  | "contact"
+  | "account"
+  | "deal"
+  | "activity";
 
 export type PermissionAction =
   | "create"
