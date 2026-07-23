@@ -6,18 +6,19 @@ Design tokens and visual conventions for Claude Code to follow across every scre
 
 ## 1. Typography
 
-**Primary typeface: Google Sans (with system fallback)**
+**Primary typefaces: Geom (headings) + Cabin (body) — standing override, supersedes any Google Sans/Inter guidance below**
 
-Google Sans isn't distributed as an open web font, so load it via a close-matching stack. Use **Google Sans** where licensed/available (e.g. through a Google Fonts-adjacent CDN or self-hosted license), falling back to **Product Sans / Inter** as the nearest visual match if Google Sans itself isn't obtainable for the project's license.
+Loaded via `next/font/google` in `app/layout.tsx` (`Geom` as `--font-heading-family`, `Cabin` as `--font-primary`, `Roboto Mono` as `--font-mono-family`), wired into the CSS variables in `app/globals.css`. `.text-display`/`.text-h1`/`.text-h2`/`.text-h3` get the heading font automatically at the utility-class level — no need to add `font-heading` by hand for those. Anything below `text-h3` (body, small, caption) defaults to Cabin via `body`'s `font-family: var(--font-sans)`; apply the `font-heading` utility explicitly if a smaller-scale label should render in Geom instead (e.g. the sidebar's uppercase section labels).
 
 ```css
 :root {
-  --font-primary: 'Google Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Google Sans Mono', 'Roboto Mono', 'SF Mono', Consolas, monospace;
+  --font-sans: var(--font-primary), 'Cabin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: var(--font-heading-family), 'Geom', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: var(--font-mono-family), 'Roboto Mono', 'SF Mono', Consolas, monospace;
 }
 ```
 
-If Claude Code cannot license/load actual Google Sans, use **Inter** as the working substitute (closest metrics and neutral, professional character) and note this substitution explicitly in the README rather than silently swapping to a different-feeling font like a generic system sans.
+Use Geom for headings and Cabin for body text everywhere going forward, per direct instruction. Do not reintroduce Google Sans/Inter without flagging it back first.
 
 ### Type Scale
 

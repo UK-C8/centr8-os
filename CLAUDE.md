@@ -189,7 +189,7 @@ Every contextual AI touchpoint inside a module (not a dedicated AI Assistant scr
 
 ### Current Status (flag for future sessions)
 
-As of this scope expansion, HR Management, CRM, and Communication pillars are **planning-stage only — no schema, no API routes, no UI built yet**. Only the original Project Management pillar (plus Resources, AI Assistant's PM-specific features, and Administration basics) has real implementation. Treat any reference to HR/CRM/Communication features as unbuilt until confirmed otherwise in a status check, same discipline applied to the original PM-only phases.
+As of this scope expansion, CRM and Communication pillars are **planning-stage only — no schema, no API routes, no UI built yet**. HR Management has three real slices: Employee Directory + Onboarding (Prompt 5.1) — `employees`/`onboarding_workflows` tables, `employee:{create,read,update,delete,terminate}` permissions, `/hr/directory` list/detail UI; and Attendance/Time Tracking + Leave Management (Prompt 5.2) — `attendance_records`/`leave_policies`/`leave_requests` tables, `attendance:record`/`leave:{request,approve,configure}` permissions, self-service check-in/out and leave requests with manager/HR-admin approval and a computed (not stored) leave balance, `/hr/attendance` + `/hr/leave` UI. The rest of HR Management's sidebar items (Payroll, Performance Reviews, Recruitment, HR Cases, Learning, Engagement) remain unbuilt. Treat any reference to a specific HR/CRM/Communication feature as unbuilt until confirmed otherwise in a status check, same discipline applied to the original PM-only phases.
 
 ## 11. Phase Gate Rule
 

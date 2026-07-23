@@ -23,9 +23,21 @@ export type ResourceType =
   | "capacity"
   | "api_key"
   | "portal"
-  | "sso";
+  | "sso"
+  | "employee"
+  | "attendance"
+  | "leave";
 
-export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "configure";
+export type PermissionAction =
+  | "create"
+  | "read"
+  | "update"
+  | "delete"
+  | "approve"
+  | "configure"
+  | "terminate"
+  | "record"
+  | "request";
 
 // Call inside the same withOrgContext(userId, ...) transaction the mutation
 // itself runs in, right after the target resource's orgId is known.

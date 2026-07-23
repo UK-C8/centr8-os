@@ -51,10 +51,9 @@ const NAV_SECTIONS: NavSection[] = [
     title: "HR MANAGEMENT",
     icon: ICON.users,
     items: [
-      { href: "/hr/directory", label: "Employee Directory", icon: ICON.users, comingSoon: true },
-      { href: "/hr/onboarding", label: "Onboarding", icon: ICON.clipboard, comingSoon: true },
-      { href: "/hr/attendance", label: "Attendance & Time Tracking", icon: ICON.gauge, comingSoon: true },
-      { href: "/hr/leave", label: "Leave Management", icon: ICON.doc, comingSoon: true },
+      { href: "/hr/directory", label: "Employee Directory", icon: ICON.users },
+      { href: "/hr/attendance", label: "Attendance & Time Tracking", icon: ICON.gauge },
+      { href: "/hr/leave", label: "Leave Management", icon: ICON.doc },
       { href: "/hr/payroll", label: "Payroll & Compensation", icon: ICON.currency, comingSoon: true },
       { href: "/hr/reviews", label: "Performance Reviews & OKRs", icon: ICON.target, comingSoon: true },
       { href: "/hr/recruitment", label: "Recruitment / Hiring", icon: ICON.users, comingSoon: true },

@@ -183,6 +183,48 @@
       "when": 1784678307880,
       "tag": "0025_seed_sso_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784745727697,
+      "tag": "0026_tired_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784745762647,
+      "tag": "0027_force_rls_employees",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784745773046,
+      "tag": "0028_seed_employee_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784779886718,
+      "tag": "0029_sleepy_captain_midlands",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784779899636,
+      "tag": "0030_force_rls_attendance_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784779916424,
+      "tag": "0031_seed_attendance_leave_permissions",
+      "breakpoints": true
     }
   ]
 }

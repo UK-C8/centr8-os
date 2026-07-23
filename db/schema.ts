@@ -430,6 +430,22 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   // break the whole point of a shared resourceType x action matrix.
   // Same tightness/shape as "portal" and "api_key": owner/admin only.
   "sso",
+  // Prompt 5.1 (HR Management, CLAUDE.md §11a) — employee directory
+  // records. Onboarding workflows aren't a separate resourceType: they're
+  // gated by employee:update (HR admin) OR a direct manager check against
+  // employees.managerId, not a role-permission-grid entry (see
+  // lib/api/employees.ts).
+  "employee",
+  // Prompt 5.2 — attendance_records. Only ever needs "record" (an
+  // employee punching their own in/out) — reads ride along on ordinary
+  // employee-scoped fetches, no separate "read" grant needed.
+  "attendance",
+  // Prompt 5.2 — leave_requests + leave_policies. "request" (an employee
+  // submitting/self-managing their own request) and "approve" (existing
+  // action, reused — same verb milestone approval already uses) are the
+  // two real actions; policy CRUD rides on the existing "configure"
+  // action (owner/admin only), same shape as "sso"/"portal".
+  "leave",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -438,6 +454,18 @@ export const permissionActionEnum = pgEnum("permission_action", [
   "delete",
   "approve",
   "configure",
+  // Prompt 5.1 — distinct from "delete": terminating an employee sets
+  // employment_status to 'terminated' and end_date, the record stays
+  // (same revoke-not-delete reasoning as org_memberships.deactivatedAt).
+  "terminate",
+  // Prompt 5.2 — an employee recording their own attendance or
+  // submitting their own leave request isn't "create" in the ordinary
+  // permission-grid sense (it's self-scoped, checked against
+  // employees.userId in application code, same as onboarding's manager
+  // check) — distinct verbs make that self-scoping explicit in the grid
+  // rather than overloading "create" to mean two different things.
+  "record",
+  "request",
 ]);
 
 // org_id nullable, same pattern as `templates`: null rows are the built-in
@@ -691,6 +719,161 @@ export const ssoConfigurations = pgTable(
   },
   () => [
     pgPolicy("sso_configurations_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+
+// --- HR: Employee Directory & Onboarding (Prompt 5.1, CLAUDE.md §11a) ---
+
+export const employmentStatusEnum = pgEnum("employment_status", ["active", "onboarding", "terminated"]);
+export const onboardingStatusEnum = pgEnum("onboarding_status", ["not_started", "in_progress", "complete"]);
+
+// user_id is nullable and unreferenced (no FK, same as org_memberships.
+// userId — Neon has no local `auth.users` table to reference) because not
+// every employee has app login; a record for someone who never gets a
+// Centr8 OS account is still valid.
+export const employees = pgTable(
+  "employees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id"),
+    fullName: text("full_name").notNull(),
+    jobTitle: text("job_title"),
+    departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    managerId: uuid("manager_id"),
+    employmentStatus: employmentStatusEnum("employment_status").notNull().default("onboarding"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+  },
+  () => [
+    pgPolicy("employees_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// One workflow per employee. `steps` is a jsonb checklist
+// ({label, done}[]) rather than its own child table — onboarding steps
+// are always viewed/edited as one whole list, never queried individually,
+// so a normalized table would only add joins with no real benefit.
+export const onboardingWorkflows = pgTable(
+  "onboarding_workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    templateId: uuid("template_id").references(() => templates.id, { onDelete: "set null" }),
+    steps: jsonb("steps").notNull().default([]),
+    status: onboardingStatusEnum("status").notNull().default("not_started"),
+  },
+  () => [
+    pgPolicy("onboarding_workflows_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+
+// --- HR: Attendance, Time Tracking & Leave Management (Prompt 5.2) ---
+
+export const attendanceStatusEnum = pgEnum("attendance_status", ["present", "absent", "half_day", "remote"]);
+export const leaveRequestStatusEnum = pgEnum("leave_request_status", ["pending", "approved", "rejected"]);
+
+// One row per employee per day, created by self-check-in (lib/api/attendance.ts
+// enforces the caller can only ever write their own employees.userId row —
+// there's no admin "record attendance for someone else" path, same
+// self-scoping as leave_requests below).
+export const attendanceRecords = pgTable(
+  "attendance_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    checkIn: timestamp("check_in", { withTimezone: true }),
+    checkOut: timestamp("check_out", { withTimezone: true }),
+    status: attendanceStatusEnum("status").notNull().default("present"),
+  },
+  () => [
+    pgPolicy("attendance_records_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// Org-level policy definitions (e.g. "PTO", 15 days/year). accrualRule is
+// jsonb rather than a fixed set of columns — accrual schemes (annual grant,
+// monthly accrual, tenure-based) vary enough that a rigid schema would
+// need a migration per new scheme; today's balance math (lib/api/leave.ts)
+// only reads daysPerYear and treats accrualRule as opaque/display-only
+// until a real accrual engine is needed.
+export const leavePolicies = pgTable(
+  "leave_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    daysPerYear: integer("days_per_year").notNull(),
+    accrualRule: jsonb("accrual_rule").notNull().default({}),
+  },
+  () => [
+    pgPolicy("leave_policies_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const leaveRequests = pgTable(
+  "leave_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    policyId: uuid("policy_id")
+      .notNull()
+      .references(() => leavePolicies.id, { onDelete: "restrict" }),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    status: leaveRequestStatusEnum("status").notNull().default("pending"),
+    approvedBy: uuid("approved_by"),
+  },
+  () => [
+    pgPolicy("leave_requests_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

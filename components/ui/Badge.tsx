@@ -69,9 +69,17 @@ const TASK_PRIORITY_COLOR: Record<string, keyof typeof COLOR_CLASSES> = {
   high: "danger",
   urgent: "danger",
 };
+const EMPLOYMENT_STATUS_COLOR: Record<string, keyof typeof COLOR_CLASSES> = {
+  active: "success",
+  onboarding: "info",
+  terminated: "neutral",
+};
 
 export function ProjectStatusBadge({ status }: { status: string }) {
   return <Badge color={PROJECT_STATUS_COLOR[status] ?? "neutral"}>{humanize(status)}</Badge>;
+}
+export function EmploymentStatusBadge({ status }: { status: string }) {
+  return <Badge color={EMPLOYMENT_STATUS_COLOR[status] ?? "neutral"}>{humanize(status)}</Badge>;
 }
 export function SprintStatusBadge({ status }: { status: string }) {
   return <Badge color={SPRINT_STATUS_COLOR[status] ?? "neutral"}>{humanize(status)}</Badge>;

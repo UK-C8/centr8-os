@@ -5,6 +5,8 @@ export const PROJECT_STATUSES = ["planning", "active", "on_hold", "completed", "
 export const SPRINT_STATUSES = ["planned", "active", "completed"] as const;
 export const TASK_STATUSES = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"] as const;
 export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const EMPLOYMENT_STATUSES = ["active", "onboarding", "terminated"] as const;
+export const ONBOARDING_STATUSES = ["not_started", "in_progress", "complete"] as const;
 
 export const TASK_STATUS_LABELS: Record<(typeof TASK_STATUSES)[number], string> = {
   backlog: "Backlog",
