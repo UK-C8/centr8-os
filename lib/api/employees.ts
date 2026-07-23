@@ -64,22 +64,9 @@ export function requireLeaveApproveAccess(db: OrgScopedDb, userId: string, orgId
   );
 }
 
-// Prompt 5.2 — attendance check-in/out and leave requests are always
-// self-scoped: the role grant (attendance:record / leave:request) says
-// "this role may record/request at all," but not "for anyone" — the
-// caller must actually BE the employees.userId behind the target
-// employeeId. There's no HR-admin-does-it-for-someone-else path here.
-export async function requireSelfEmployee(
-  db: OrgScopedDb,
-  userId: string,
-  orgId: string,
-  employeeId: string,
-): Promise<void> {
-  const [target] = await db
-    .select({ userId: employees.userId })
-    .from(employees)
-    .where(and(eq(employees.id, employeeId), eq(employees.orgId, orgId)));
-  if (!target || target.userId !== userId) {
-    throw new ApiError(403, "You can only do this for your own employee record");
-  }
+// Prompt 5.3 — HR-admin-only (confirmed scope decision: HR Management has
+// no employee self-service login path — see below). No self-view
+// fallback: compensation:view_sensitive is the only way in.
+export function requireCompensationViewAccess(db: OrgScopedDb, userId: string, orgId: string) {
+  return requirePermission(db, userId, orgId, "compensation", "view_sensitive");
 }

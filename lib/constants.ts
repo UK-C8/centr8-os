@@ -30,3 +30,14 @@ export const TASK_STATUS_PROGRESS: Record<(typeof TASK_STATUSES)[number], number
   done: 100,
   cancelled: 100,
 };
+
+// Mirrors db/schema.ts's BUILT_IN_ROLES — kept separate (not imported)
+// because that module also pulls in drizzle-orm/pg-core, which has no
+// business in a client bundle.
+export const ORG_ROLES = ["owner", "admin", "member", "viewer"] as const;
+
+// Mirrors db/schema.ts's Prompt 5.4 status enums.
+export const PERFORMANCE_REVIEW_STATUSES = ["draft", "submitted", "completed"] as const;
+export const JOB_POSTING_STATUSES = ["draft", "open", "closed"] as const;
+export const CANDIDATE_STAGES = ["applied", "interview", "offer", "hired", "rejected"] as const;
+export const HR_CASE_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;

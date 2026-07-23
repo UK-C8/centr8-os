@@ -16,26 +16,17 @@
 // Not implemented: groups, bulk operations, the full SCIM filter grammar,
 // PATCH ops beyond replace-active. Add them if a real IdP integration
 // needs them — no evidence any does yet.
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/db";
 import { orgMemberships } from "@/db/schema";
+import { supabaseAdminClient, findAuthUserByEmail } from "./supabaseAdmin";
 
-export function scimAdminClient() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
-
-export async function findAuthUserByEmail(email: string) {
-  const supabase = scimAdminClient();
-  for (let page = 1; ; page++) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw error;
-    const match = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-    if (match) return match;
-    if (data.users.length < 200) return null;
-  }
-}
+// Kept as a re-export — scim.ts's own routes import scimAdminClient by
+// name; lib/api/orgMembers.ts (member invites) uses supabaseAdminClient
+// directly instead of duplicating this client.
+export const scimAdminClient = supabaseAdminClient;
+export { findAuthUserByEmail };
 
 export interface ScimUser {
   schemas: string[];

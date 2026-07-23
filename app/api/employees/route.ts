@@ -53,6 +53,16 @@ export async function POST(req: NextRequest) {
           employmentStatus: body.employment_status ?? undefined,
           startDate: body.start_date ?? null,
           endDate: body.end_date ?? null,
+          email: body.email ?? null,
+          phone: body.phone ?? null,
+          dateOfBirth: body.date_of_birth ?? null,
+          gender: body.gender ?? null,
+          maritalStatus: body.marital_status ?? null,
+          nationality: body.nationality ?? null,
+          address: body.address ?? null,
+          city: body.city ?? null,
+          state: body.state ?? null,
+          zipCode: body.zip_code ?? null,
         })
         .returning();
     });

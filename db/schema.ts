@@ -446,6 +446,30 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   // two real actions; policy CRUD rides on the existing "configure"
   // action (owner/admin only), same shape as "sso"/"portal".
   "leave",
+  // Prompt 5.3 — compensation_records. Deliberately its own resourceType,
+  // not folded into "employee", so a role can be granted ordinary
+  // employee:read (name/title/department — directory-level info) without
+  // that also exposing salary. Nothing but "view_sensitive" (+ordinary
+  // create/update/delete for HR admin) is ever granted here — no
+  // member/viewer default the way most other resource types get.
+  "compensation",
+  // Prompt 5.4 — the remaining HR Management modules. Consolidated by
+  // module rather than by table (performance covers both
+  // performance_reviews and okrs; recruitment covers both job_postings
+  // and candidates; training covers both training_courses and
+  // training_completions; engagement covers both engagement_surveys and
+  // survey_responses) — same reasoning as "leave" covering both
+  // leave_requests and leave_policies. All reuse the existing
+  // create/read/update/delete actions, no new permission_action values
+  // needed. Owner/admin only by default, same HR-admin-only precedent
+  // confirmed for attendance/leave/compensation in this app (no employee
+  // self-service login path for HR Management) — see lib/api/employees.ts
+  // and CLAUDE.md §11a's Current Status note.
+  "performance",
+  "recruitment",
+  "hr_case",
+  "training",
+  "engagement",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -466,6 +490,13 @@ export const permissionActionEnum = pgEnum("permission_action", [
   // rather than overloading "create" to mean two different things.
   "record",
   "request",
+  // Prompt 5.3 — separate from "read" specifically so an org could (in
+  // principle) grant ordinary employee:read without also exposing
+  // compensation; a manager's employee:update grant (they can edit job
+  // title, department) still does NOT imply view_sensitive — compensation
+  // access is HR-admin-grant-only plus the employee's own record, per the
+  // prompt's "not even their manager, unless explicitly granted."
+  "view_sensitive",
 ]);
 
 // org_id nullable, same pattern as `templates`: null rows are the built-in
@@ -753,6 +784,21 @@ export const employees = pgTable(
     employmentStatus: employmentStatusEnum("employment_status").notNull().default("onboarding"),
     startDate: date("start_date"),
     endDate: date("end_date"),
+    // Personal info (HR admin data-entry UI, "New Employee" multi-step
+    // form) — all nullable, none of it required to create a bare-minimum
+    // record. No photo/document storage: this app has no file/blob
+    // storage in the stack (CLAUDE.md §2); flagged rather than silently
+    // added.
+    email: text("email"),
+    phone: text("phone"),
+    dateOfBirth: date("date_of_birth"),
+    gender: text("gender"),
+    maritalStatus: text("marital_status"),
+    nationality: text("nationality"),
+    address: text("address"),
+    city: text("city"),
+    state: text("state"),
+    zipCode: text("zip_code"),
   },
   () => [
     pgPolicy("employees_isolation", {
@@ -874,6 +920,281 @@ export const leaveRequests = pgTable(
   },
   () => [
     pgPolicy("leave_requests_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+
+// --- HR: Payroll & Compensation (Prompt 5.3) ---
+//
+// Structured record-keeping only — NOT tax withholding, statutory
+// compliance calculations, or bank disbursement (region-specific
+// compliance logic is out of scope; see the UI's visible scope note in
+// app/(app)/hr/compensation). Highly sensitive: gated by
+// compensation:view_sensitive (HR admin, owner/admin only) OR the
+// employee's own record — never a manager by default, per the prompt's
+// explicit "not even their manager, unless explicitly granted."
+export const compensationRecords = pgTable(
+  "compensation_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    baseSalary: numeric("base_salary", { precision: 12, scale: 2, mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    effectiveDate: date("effective_date").notNull(),
+    bonus: jsonb("bonus"),
+    benefits: jsonb("benefits"),
+  },
+  () => [
+    pgPolicy("compensation_records_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+
+// --- HR: Performance Reviews & OKRs, Recruitment, HR Cases, Training,
+// Engagement (Prompt 5.4) — plain CRUD/workflows, no AI dependency here
+// (AI-assisted job posting drafts / review summarization are separate
+// follow-up prompts once the LLM provider decision is finalized). Same
+// HR-admin-only data-entry model as Attendance/Leave/Compensation: no
+// employee self-service login path for any of these five modules.
+
+export const performanceReviewStatusEnum = pgEnum("performance_review_status", [
+  "draft",
+  "submitted",
+  "completed",
+]);
+export const jobPostingStatusEnum = pgEnum("job_posting_status", ["draft", "open", "closed"]);
+export const candidateStageEnum = pgEnum("candidate_stage", [
+  "applied",
+  "interview",
+  "offer",
+  "hired",
+  "rejected",
+]);
+export const hrCaseStatusEnum = pgEnum("hr_case_status", ["open", "in_progress", "resolved", "closed"]);
+
+export const performanceReviews = pgTable(
+  "performance_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id").references(() => employees.id, { onDelete: "set null" }),
+    period: text("period").notNull(),
+    ratings: jsonb("ratings").notNull().default({}),
+    comments: text("comments"),
+    status: performanceReviewStatusEnum("status").notNull().default("draft"),
+  },
+  () => [
+    pgPolicy("performance_reviews_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// employeeId and teamId are both nullable — an OKR belongs to one or the
+// other (an individual's or a team's objective), never enforced at the DB
+// level since this app has no CHECK-constraint precedent elsewhere either.
+export const okrs = pgTable(
+  "okrs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    objective: text("objective").notNull(),
+    keyResults: jsonb("key_results").notNull().default([]),
+    period: text("period").notNull(),
+  },
+  () => [
+    pgPolicy("okrs_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const jobPostings = pgTable(
+  "job_postings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+    status: jobPostingStatusEnum("status").notNull().default("draft"),
+    description: text("description"),
+  },
+  () => [
+    pgPolicy("job_postings_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const candidates = pgTable(
+  "candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    jobPostingId: uuid("job_posting_id")
+      .notNull()
+      .references(() => jobPostings.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    stage: candidateStageEnum("stage").notNull().default("applied"),
+  },
+  () => [
+    pgPolicy("candidates_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const hrCases = pgTable(
+  "hr_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    category: text("category").notNull(),
+    description: text("description"),
+    status: hrCaseStatusEnum("status").notNull().default("open"),
+    assignedTo: uuid("assigned_to").references(() => employees.id, { onDelete: "set null" }),
+  },
+  () => [
+    pgPolicy("hr_cases_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const trainingCourses = pgTable(
+  "training_courses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: jsonb("content").notNull().default({}),
+    requiredForRole: text("required_for_role"),
+  },
+  () => [
+    pgPolicy("training_courses_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const trainingCompletions = pgTable(
+  "training_completions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => trainingCourses.id, { onDelete: "cascade" }),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [
+    pgPolicy("training_completions_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+export const engagementSurveys = pgTable(
+  "engagement_surveys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    questions: jsonb("questions").notNull().default([]),
+  },
+  () => [
+    pgPolicy("engagement_surveys_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// employeeId nullable — an anonymous response records no employee at all
+// rather than a real id with `anonymous: true` stapled on, so an
+// accidental read path can't de-anonymize it by joining on employeeId.
+export const surveyResponses = pgTable(
+  "survey_responses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    surveyId: uuid("survey_id")
+      .notNull()
+      .references(() => engagementSurveys.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    answers: jsonb("answers").notNull().default({}),
+    anonymous: boolean("anonymous").notNull().default(false),
+  },
+  () => [
+    pgPolicy("survey_responses_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

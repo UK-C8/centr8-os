@@ -4,11 +4,10 @@ import { withOrgContext } from "@/db/withOrgContext";
 import { attendanceRecords } from "@/db/schema";
 import { ApiError, handleApiError, requireUserId } from "@/lib/api/helpers";
 import { requirePermission } from "@/lib/api/permissions";
-import { requireSelfEmployee } from "@/lib/api/employees";
 
 type Params = { params: Promise<{ id: string }> };
 
-// Self check-out only — same self-scoping as POST /api/attendance.
+// HR-admin check-out — same data-entry scope as POST /api/attendance.
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
@@ -17,13 +16,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const row = await withOrgContext(userId, async (db) => {
       const [existing] = await db
-        .select({ orgId: attendanceRecords.orgId, employeeId: attendanceRecords.employeeId })
+        .select({ orgId: attendanceRecords.orgId })
         .from(attendanceRecords)
         .where(eq(attendanceRecords.id, id));
       if (!existing) return undefined;
 
       await requirePermission(db, userId, existing.orgId, "attendance", "record");
-      await requireSelfEmployee(db, userId, existing.orgId, existing.employeeId);
 
       const [updated] = await db
         .update(attendanceRecords)

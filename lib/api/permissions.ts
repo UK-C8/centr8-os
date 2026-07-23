@@ -26,7 +26,13 @@ export type ResourceType =
   | "sso"
   | "employee"
   | "attendance"
-  | "leave";
+  | "leave"
+  | "compensation"
+  | "performance"
+  | "recruitment"
+  | "hr_case"
+  | "training"
+  | "engagement";
 
 export type PermissionAction =
   | "create"
@@ -37,7 +43,8 @@ export type PermissionAction =
   | "configure"
   | "terminate"
   | "record"
-  | "request";
+  | "request"
+  | "view_sensitive";
 
 // Call inside the same withOrgContext(userId, ...) transaction the mutation
 // itself runs in, right after the target resource's orgId is known.

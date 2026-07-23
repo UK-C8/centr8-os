@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useOrg } from "@/lib/context/OrgContext";
+import { createClient } from "@/lib/supabase/client";
 import type { PermissionAction, ResourceType } from "@/lib/api/permissions";
 import { EmploymentStatusBadge, Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -12,11 +13,22 @@ import { EMPLOYMENT_STATUSES } from "@/lib/constants";
 type Employee = {
   id: string;
   orgId: string;
+  userId: string | null;
   fullName: string;
   jobTitle: string | null;
   employmentStatus: string;
   startDate: string | null;
   endDate: string | null;
+  email: string | null;
+  phone: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  maritalStatus: string | null;
+  nationality: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
 };
 
 type Step = { label: string; done: boolean };
@@ -96,8 +108,42 @@ function OverviewTab({
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(employee.fullName);
   const [jobTitle, setJobTitle] = useState(employee.jobTitle ?? "");
+  const [email, setEmail] = useState(employee.email ?? "");
+  const [phone, setPhone] = useState(employee.phone ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState(employee.dateOfBirth ?? "");
+  const [gender, setGender] = useState(employee.gender ?? "");
+  const [maritalStatus, setMaritalStatus] = useState(employee.maritalStatus ?? "");
+  const [nationality, setNationality] = useState(employee.nationality ?? "");
+  const [address, setAddress] = useState(employee.address ?? "");
+  const [city, setCity] = useState(employee.city ?? "");
+  const [state, setState] = useState(employee.state ?? "");
+  const [zipCode, setZipCode] = useState(employee.zipCode ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  async function handleLinkMyAccount() {
+    setLinking(true);
+    setError(null);
+    const { data } = await createClient().auth.getUser();
+    if (!data.user) {
+      setError("Not signed in");
+      setLinking(false);
+      return;
+    }
+    const res = await fetch(`/api/employees/${employee.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: data.user.id }),
+    });
+    const body = await res.json();
+    setLinking(false);
+    if (!res.ok) {
+      setError(body.error ?? "Failed to link account");
+      return;
+    }
+    onUpdated();
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -106,7 +152,20 @@ function OverviewTab({
     const res = await fetch(`/api/employees/${employee.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ full_name: fullName, job_title: jobTitle || null }),
+      body: JSON.stringify({
+        full_name: fullName,
+        job_title: jobTitle || null,
+        email: email || null,
+        phone: phone || null,
+        date_of_birth: dateOfBirth || null,
+        gender: gender || null,
+        marital_status: maritalStatus || null,
+        nationality: nationality || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        zip_code: zipCode || null,
+      }),
     });
     const body = await res.json();
     setSaving(false);
@@ -134,13 +193,53 @@ function OverviewTab({
 
       {editing ? (
         <form onSubmit={handleSave} className="space-y-4">
-          <Field label="Full name">
-            <Input className="w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Full name">
+              <Input className="w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </Field>
+            <Field label="Job title">
+              <Input className="w-full" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Email">
+              <Input type="email" className="w-full" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Phone">
+              <Input className="w-full" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Date of birth">
+              <Input type="date" className="w-full" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+            </Field>
+            <Field label="Gender">
+              <Input className="w-full" value={gender} onChange={(e) => setGender(e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Marital status">
+              <Input className="w-full" value={maritalStatus} onChange={(e) => setMaritalStatus(e.target.value)} />
+            </Field>
+            <Field label="Nationality">
+              <Input className="w-full" value={nationality} onChange={(e) => setNationality(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Address">
+            <Input className="w-full" value={address} onChange={(e) => setAddress(e.target.value)} />
           </Field>
-          <Field label="Job title">
-            <Input className="w-full" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-          </Field>
-          <div className="flex justify-end gap-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="City">
+              <Input className="w-full" value={city} onChange={(e) => setCity(e.target.value)} />
+            </Field>
+            <Field label="State">
+              <Input className="w-full" value={state} onChange={(e) => setState(e.target.value)} />
+            </Field>
+            <Field label="ZIP code">
+              <Input className="w-full" value={zipCode} onChange={(e) => setZipCode(e.target.value)} />
+            </Field>
+          </div>
+          <div className="flex justify-end gap-3 border-t border-neutral-200 pt-4">
             <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
               Cancel
             </Button>
@@ -166,7 +265,60 @@ function OverviewTab({
                 <dd className="mt-1 text-body text-neutral-950">{employee.endDate}</dd>
               </div>
             )}
+            <div>
+              <dt className="text-small text-neutral-600">Linked account</dt>
+              <dd className="mt-1">
+                {employee.userId ? (
+                  <Badge color="success">Linked</Badge>
+                ) : (
+                  <Badge color="neutral">Not linked</Badge>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Email</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.email ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Phone</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.phone ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Date of birth</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.dateOfBirth ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Gender</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.gender ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Marital status</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.maritalStatus ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-small text-neutral-600">Nationality</dt>
+              <dd className="mt-1 text-body text-neutral-950">{employee.nationality ?? "—"}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-small text-neutral-600">Address</dt>
+              <dd className="mt-1 text-body text-neutral-950">
+                {[employee.address, employee.city, employee.state, employee.zipCode].filter(Boolean).join(", ") || "—"}
+              </dd>
+            </div>
           </dl>
+
+          {!employee.userId && (
+            <div className="rounded-md border-l-4 border-info-600 bg-info-100 px-3 py-3">
+              <p className="text-small text-info-600">
+                This record isn&apos;t linked to a login yet — a linked account is what lets a manager approve their
+                own reports&apos; onboarding and leave requests. Attendance, leave, and compensation are otherwise
+                HR-admin data entry only. If this employee is you, claim it below.
+              </p>
+              <Button variant="secondary" className="mt-2" onClick={handleLinkMyAccount} disabled={linking}>
+                {linking ? "Linking…" : "This is me — link my account"}
+              </Button>
+            </div>
+          )}
 
           <div className="flex gap-3 border-t border-neutral-200 pt-4">
             {canUpdate && (

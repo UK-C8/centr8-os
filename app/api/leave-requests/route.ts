@@ -4,7 +4,6 @@ import { withOrgContext } from "@/db/withOrgContext";
 import { employees, leaveRequests } from "@/db/schema";
 import { ApiError, handleApiError, requireUserId } from "@/lib/api/helpers";
 import { requirePermission } from "@/lib/api/permissions";
-import { requireSelfEmployee } from "@/lib/api/employees";
 
 // Team leave visibility (task 3: "simple list view for team leave
 // visibility") reads by org_id, gated by employee:read — the same broad
@@ -31,6 +30,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// HR-admin data entry (confirmed scope decision: no employee self-service
+// login for HR Management) — an HR admin files a leave request on an
+// employee's behalf.
 export async function POST(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
@@ -44,7 +46,6 @@ export async function POST(req: NextRequest) {
       if (!emp) return undefined;
 
       await requirePermission(db, userId, emp.orgId, "leave", "request");
-      await requireSelfEmployee(db, userId, emp.orgId, body.employee_id);
 
       const [created] = await db
         .insert(leaveRequests)

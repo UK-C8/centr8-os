@@ -4,19 +4,31 @@ import { withOrgContext } from "@/db/withOrgContext";
 import { attendanceRecords, employees } from "@/db/schema";
 import { ApiError, handleApiError, requireUserId } from "@/lib/api/helpers";
 import { requirePermission } from "@/lib/api/permissions";
-import { requireSelfEmployee } from "@/lib/api/employees";
 
+// employee_id -> that employee's full history. org_id -> org-wide records
+// for a single date (default today), for the HR dashboard's "who's in
+// today" view — never both unscoped, always one or the other.
 export async function GET(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
     const employeeId = req.nextUrl.searchParams.get("employee_id");
-    if (!employeeId) throw new ApiError(400, "employee_id is required");
+    const orgId = req.nextUrl.searchParams.get("org_id");
+    if (!employeeId && !orgId) throw new ApiError(400, "employee_id or org_id is required");
 
     const rows = await withOrgContext(userId, async (db) => {
-      const [emp] = await db.select({ orgId: employees.orgId }).from(employees).where(eq(employees.id, employeeId));
-      if (!emp) return undefined;
-      await requirePermission(db, userId, emp.orgId, "employee", "read");
-      return db.select().from(attendanceRecords).where(eq(attendanceRecords.employeeId, employeeId));
+      if (employeeId) {
+        const [emp] = await db.select({ orgId: employees.orgId }).from(employees).where(eq(employees.id, employeeId));
+        if (!emp) return undefined;
+        await requirePermission(db, userId, emp.orgId, "attendance", "record");
+        return db.select().from(attendanceRecords).where(eq(attendanceRecords.employeeId, employeeId));
+      }
+
+      await requirePermission(db, userId, orgId!, "attendance", "record");
+      const date = req.nextUrl.searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+      return db
+        .select()
+        .from(attendanceRecords)
+        .where(and(eq(attendanceRecords.orgId, orgId!), eq(attendanceRecords.date, date)));
     });
     if (rows === undefined) throw new ApiError(404, "Employee not found");
 
@@ -26,8 +38,10 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Self check-in — creates today's record if it doesn't exist yet.
-// Check-out is a PATCH on the created record (app/api/attendance/[id]).
+// HR-admin data entry (confirmed scope decision: no employee self-service
+// login for HR Management) — an HR admin records attendance on an
+// employee's behalf. Creates today's record if it doesn't exist yet;
+// check-out is a PATCH on the created record (app/api/attendance/[id]).
 export async function POST(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
@@ -39,7 +53,6 @@ export async function POST(req: NextRequest) {
       if (!emp) return undefined;
 
       await requirePermission(db, userId, emp.orgId, "attendance", "record");
-      await requireSelfEmployee(db, userId, emp.orgId, body.employee_id);
 
       const today = new Date().toISOString().slice(0, 10);
       const [existing] = await db

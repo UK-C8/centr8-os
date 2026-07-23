@@ -225,6 +225,62 @@
       "when": 1784779916424,
       "tag": "0031_seed_attendance_leave_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784789504585,
+      "tag": "0032_young_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784789516355,
+      "tag": "0033_force_rls_compensation",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784789522525,
+      "tag": "0034_seed_compensation_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784791062230,
+      "tag": "0035_restrict_hr_self_service_to_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784792260360,
+      "tag": "0036_purple_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784793603729,
+      "tag": "0037_lyrical_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784793622343,
+      "tag": "0038_force_rls_hr_phase4",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784793630203,
+      "tag": "0039_seed_hr_phase4_permissions",
+      "breakpoints": true
     }
   ]
 }
