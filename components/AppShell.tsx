@@ -96,8 +96,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/crm/accounts", label: "Accounts", icon: ICON.folder },
       { href: "/crm/deals", label: "Deals / Pipeline", icon: ICON.wallet },
       { href: "/crm/activities", label: "Activities", icon: ICON.checklist, comingSoon: true },
-      { href: "/crm/forecasts", label: "Sales Forecasts", icon: ICON.gauge, comingSoon: true },
-      { href: "/crm/campaigns", label: "Campaigns", icon: ICON.sparkle, comingSoon: true },
+      { href: "/crm/forecasts", label: "Sales Forecasts", icon: ICON.gauge },
+      { href: "/crm/campaigns", label: "Campaigns", icon: ICON.sparkle },
     ],
   },
   {

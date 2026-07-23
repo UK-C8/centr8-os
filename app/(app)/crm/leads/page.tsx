@@ -21,11 +21,14 @@ type Lead = {
   status: (typeof LEAD_STATUSES)[number];
   convertedAccountId: string | null;
   convertedContactId: string | null;
+  campaignId: string | null;
 };
+type Campaign = { id: string; name: string };
 
 export default function LeadsPage() {
   const { selectedOrgId, can, loading: orgLoading } = useOrg();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -38,11 +41,14 @@ export default function LeadsPage() {
     if (!selectedOrgId) return;
     setLoading(true);
     setError(null);
-    fetch(`/api/leads?org_id=${selectedOrgId}`)
-      .then((r) => r.json())
-      .then((body) => {
-        if (!body.data) throw new Error(body.error ?? "Failed to load leads");
-        setLeads(body.data);
+    Promise.all([
+      fetch(`/api/leads?org_id=${selectedOrgId}`).then((r) => r.json()),
+      fetch(`/api/campaigns?org_id=${selectedOrgId}`).then((r) => r.json()),
+    ])
+      .then(([leadsBody, campaignsBody]) => {
+        if (!leadsBody.data) throw new Error(leadsBody.error ?? "Failed to load leads");
+        setLeads(leadsBody.data);
+        setCampaigns(campaignsBody.data ?? []);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load leads"))
       .finally(() => setLoading(false));
@@ -174,6 +180,7 @@ export default function LeadsPage() {
         <Modal onClose={() => setShowNew(false)}>
           <NewLeadForm
             orgId={selectedOrgId}
+            campaigns={campaigns}
             onClose={() => setShowNew(false)}
             onCreated={() => {
               setShowNew(false);
@@ -186,12 +193,23 @@ export default function LeadsPage() {
   );
 }
 
-function NewLeadForm({ orgId, onClose, onCreated }: { orgId: string; onClose: () => void; onCreated: () => void }) {
+function NewLeadForm({
+  orgId,
+  campaigns,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  campaigns: Campaign[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [source, setSource] = useState("");
+  const [campaignId, setCampaignId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,6 +229,7 @@ function NewLeadForm({ orgId, onClose, onCreated }: { orgId: string; onClose: ()
         email: email || null,
         phone: phone || null,
         source: source || null,
+        campaign_id: campaignId || null,
       }),
     });
     const body = await res.json();
@@ -245,6 +264,18 @@ function NewLeadForm({ orgId, onClose, onCreated }: { orgId: string; onClose: ()
       <Field label="Source">
         <Input className="w-full" value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. Website, Referral" />
       </Field>
+      {campaigns.length > 0 && (
+        <Field label="Campaign">
+          <Select className="w-full" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+            <option value="">No campaign</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
 
       <div className="flex justify-end gap-3 border-t border-neutral-200 pt-4">
         <Button type="button" variant="secondary" onClick={onClose}>

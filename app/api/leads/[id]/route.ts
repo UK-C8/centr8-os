@@ -50,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           source: body.source === undefined ? undefined : body.source,
           status: body.status ?? undefined,
           ownerId: body.owner_id === undefined ? undefined : body.owner_id,
+          campaignId: body.campaign_id === undefined ? undefined : body.campaign_id,
         })
         .where(eq(leads.id, id))
         .returning();

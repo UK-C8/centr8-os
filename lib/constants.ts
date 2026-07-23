@@ -51,3 +51,4 @@ export const DEAL_STAGE_LABELS: Record<(typeof DEAL_STAGES)[number], string> = {
   lost: "Lost",
 };
 export const ACTIVITY_TYPES = ["call", "meeting", "task", "note"] as const;
+export const CAMPAIGN_STATUSES = ["planned", "active", "completed", "cancelled"] as const;

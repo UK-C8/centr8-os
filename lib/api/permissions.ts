@@ -38,7 +38,9 @@ export type ResourceType =
   | "contact"
   | "account"
   | "deal"
-  | "activity";
+  | "activity"
+  | "forecast"
+  | "campaign";
 
 export type PermissionAction =
   | "create"

@@ -487,6 +487,10 @@ export const resourceTypeEnum = pgEnum("resource_type", [
   // CRUD, viewer read-only.
   "deal",
   "activity",
+  // Prompt 6.3 — Sales Forecasts & Campaigns. Same tier as the rest of
+  // Phase 6.
+  "forecast",
+  "campaign",
 ]);
 export const permissionActionEnum = pgEnum("permission_action", [
   "create",
@@ -782,6 +786,7 @@ export const leadStatusEnum = pgEnum("lead_status", ["new", "contacted", "qualif
 export const dealStageEnum = pgEnum("deal_stage", ["prospecting", "proposal", "negotiation", "won", "lost"]);
 export const activityRelatedTypeEnum = pgEnum("activity_related_type", ["lead", "contact", "account", "deal"]);
 export const activityTypeEnum = pgEnum("activity_type", ["call", "meeting", "task", "note"]);
+export const campaignStatusEnum = pgEnum("campaign_status", ["planned", "active", "completed", "cancelled"]);
 
 export const employmentStatusEnum = pgEnum("employment_status", ["active", "onboarding", "terminated"]);
 export const onboardingStatusEnum = pgEnum("onboarding_status", ["not_started", "in_progress", "complete"]);
@@ -1314,6 +1319,11 @@ export const leads = pgTable(
     ownerId: uuid("owner_id"),
     convertedAccountId: uuid("converted_account_id").references(() => accounts.id, { onDelete: "set null" }),
     convertedContactId: uuid("converted_contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    // Prompt 6.3 — which campaign this lead came from, for ROI visibility.
+    // A single FK (not the prompt's jsonb/join-table options) since a lead
+    // has exactly one originating campaign in practice — same shape as
+    // contacts.accountId.
+    campaignId: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   },
   () => [
     pgPolicy("leads_isolation", {
@@ -1375,6 +1385,60 @@ export const activities = pgTable(
   },
   () => [
     pgPolicy("activities_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// Prompt 6.3 — campaigns. "type" is free text (email/event/ad/webinar/...)
+// same treatment as leads.source, not an enum — open-ended, not a fixed
+// workflow. Attribution is leads.campaignId (see above), not a jsonb
+// array or join table.
+export const campaigns = pgTable(
+  "campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type"),
+    status: campaignStatusEnum("status").notNull().default("planned"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+  },
+  () => [
+    pgPolicy("campaigns_isolation", {
+      for: "all",
+      to: authenticatedRole,
+      using: inUserOrgs,
+      withCheck: inUserOrgs,
+    }),
+  ],
+).enableRLS();
+
+// Prompt 6.3 — forecasts. Deliberately stores only the target (quota) per
+// period; the "computed rollup" (actual pipeline value by stage) is never
+// stored here — it's queried live from `deals` grouped by
+// expected_close_date/stage at read time, per the prompt's explicit "no AI
+// needed... not a prediction" framing. period is free text (e.g. "2026-Q3"
+// or "2026-07") rather than a date, since a forecast period is a bucket
+// label, not a single point in time.
+export const forecasts = pgTable(
+  "forecasts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    period: text("period").notNull(),
+    targetValue: numeric("target_value", { precision: 12, scale: 2, mode: "number" }),
+  },
+  () => [
+    pgPolicy("forecasts_isolation", {
       for: "all",
       to: authenticatedRole,
       using: inUserOrgs,

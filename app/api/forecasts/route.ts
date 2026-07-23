@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { withOrgContext } from "@/db/withOrgContext";
-import { leads } from "@/db/schema";
+import { forecasts } from "@/db/schema";
 import { ApiError, handleApiError, requireUserId } from "@/lib/api/helpers";
 import { requirePermission } from "@/lib/api/permissions";
 
+// Stores only the per-period target. The actual rollup (pipeline value by
+// stage/period) is computed client-side from GET /api/deals — see
+// db/schema.ts's comment above the forecasts table.
 export async function GET(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
@@ -12,8 +15,8 @@ export async function GET(req: NextRequest) {
     if (!orgId) throw new ApiError(400, "org_id is required");
 
     const rows = await withOrgContext(userId, async (db) => {
-      await requirePermission(db, userId, orgId, "lead", "read");
-      return db.select().from(leads).where(eq(leads.orgId, orgId));
+      await requirePermission(db, userId, orgId, "forecast", "read");
+      return db.select().from(forecasts).where(eq(forecasts.orgId, orgId));
     });
 
     return NextResponse.json({ data: rows });
@@ -26,23 +29,13 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await requireUserId(req);
     const body = await req.json();
-    if (!body.org_id || !body.name) throw new ApiError(400, "org_id and name are required");
+    if (!body.org_id || !body.period) throw new ApiError(400, "org_id and period are required");
 
     const [row] = await withOrgContext(userId, async (db) => {
-      await requirePermission(db, userId, body.org_id, "lead", "create");
+      await requirePermission(db, userId, body.org_id, "forecast", "create");
       return db
-        .insert(leads)
-        .values({
-          orgId: body.org_id,
-          name: body.name,
-          company: body.company ?? null,
-          email: body.email ?? null,
-          phone: body.phone ?? null,
-          source: body.source ?? null,
-          status: body.status ?? "new",
-          ownerId: body.owner_id ?? null,
-          campaignId: body.campaign_id ?? null,
-        })
+        .insert(forecasts)
+        .values({ orgId: body.org_id, period: body.period, targetValue: body.target_value ?? null })
         .returning();
     });
 
